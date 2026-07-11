@@ -1,0 +1,1491 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="幕">
+<title>幕 -maku-</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F7F6F2;
+  --ink:#2B2A28;
+  --ai:#31548C;
+  --bubble-ai:#8D5885;
+  --bubble-user:#83AAB1;
+  --narr:#5F5D5D;
+  --ai-soft:#E8EDF5;
+  --gray:#8A857C;
+  --line:#E2DFD8;
+  --white:#FFFFFF;
+  --danger:#A0453B;
+  --mincho:"Zen Old Mincho","Hiragino Mincho ProN",serif;
+  --sans:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  font-family:var(--sans);
+  background:var(--paper);
+  color:var(--ink);
+  font-size:15px;
+  line-height:1.7;
+}
+button{font-family:inherit;font-size:inherit;cursor:pointer;border:none;background:none;color:inherit}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--ai);outline-offset:2px}
+input,textarea,select{
+  font-family:inherit;font-size:15px;color:var(--ink);
+  background:var(--white);border:1px solid var(--line);border-radius:8px;
+  padding:10px 12px;width:100%;
+}
+textarea{resize:vertical;min-height:80px;line-height:1.6}
+label{display:block;font-size:12px;color:var(--gray);margin:14px 0 4px;letter-spacing:.05em}
+.hint{font-size:12px;color:var(--gray);margin-top:4px}
+
+/* ---------- layout ---------- */
+.view{display:none;min-height:100dvh;flex-direction:column}
+.view.active{display:flex}
+.topbar{
+  display:flex;align-items:center;gap:10px;
+  padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;
+  background:var(--paper);border-bottom:1px solid var(--line);
+  position:sticky;top:0;z-index:10;
+}
+.topbar h1{
+  font-family:var(--mincho);font-weight:600;font-size:20px;letter-spacing:.35em;
+  flex:1;
+}
+.topbar .sub{font-size:12px;color:var(--gray);letter-spacing:.1em}
+.iconbtn{
+  width:38px;height:38px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;color:var(--gray);flex-shrink:0;
+}
+.iconbtn:active{background:var(--line)}
+.content{flex:1;padding:16px;max-width:640px;width:100%;margin:0 auto}
+
+/* ---------- home ---------- */
+.char-card{
+  display:flex;align-items:center;gap:14px;
+  background:var(--white);border:1px solid var(--line);border-radius:14px;
+  padding:14px;margin-bottom:12px;width:100%;text-align:left;
+}
+.char-card:active{background:var(--ai-soft)}
+.avatar{
+  width:56px;height:56px;border-radius:50%;flex-shrink:0;
+  background:var(--ai-soft);color:var(--ai);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--mincho);font-size:22px;font-weight:600;
+  overflow:hidden;
+}
+.avatar img{width:100%;height:100%;object-fit:cover}
+.char-card .name{font-family:var(--mincho);font-size:17px;font-weight:600}
+.char-card .meta{font-size:12px;color:var(--gray)}
+.char-card .edit{margin-left:auto;color:var(--gray);font-size:13px;padding:8px}
+.empty{
+  text-align:center;color:var(--gray);padding:48px 24px;
+  font-family:var(--mincho);letter-spacing:.1em;
+}
+.primary{
+  display:block;width:100%;padding:13px;border-radius:12px;
+  background:var(--ai);color:#fff;font-weight:600;letter-spacing:.05em;
+  margin-top:8px;
+}
+.primary:disabled{opacity:.4}
+.ghost{
+  display:block;width:100%;padding:12px;border-radius:12px;
+  border:1px solid var(--line);color:var(--ink);background:var(--white);
+  margin-top:10px;
+}
+.danger-text{color:var(--danger);font-size:13px;padding:12px;width:100%;text-align:center;margin-top:6px}
+
+/* ---------- situations ---------- */
+.sit-block{
+  background:var(--paper);border:1px solid var(--line);border-radius:10px;
+  padding:12px;margin-top:10px;
+}
+.sit-block .sit-head{display:flex;align-items:center;justify-content:space-between}
+.sit-block .sit-head strong{font-size:13px;color:var(--gray);letter-spacing:.05em}
+.sit-del{color:var(--danger);font-size:12px;padding:4px 8px}
+.sit-pick{
+  display:block;width:100%;text-align:left;
+  background:var(--white);border:1px solid var(--line);border-radius:12px;
+  padding:14px;margin-bottom:10px;
+}
+.sit-pick:active{background:var(--ai-soft)}
+.sit-pick .t{font-family:var(--mincho);font-weight:600}
+.sit-pick .d{font-size:12px;color:var(--gray);margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sit-pick .resume{font-size:11px;color:var(--ai);margin-top:4px}
+.per-card{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  background:var(--white);border:1px solid var(--line);border-radius:12px;
+  padding:12px 14px;margin-bottom:8px;
+}
+.per-card.on{border-color:var(--ai);background:var(--ai-soft)}
+.per-card .check{color:var(--ai);font-weight:600;width:18px;flex-shrink:0}
+.per-card .pn{font-weight:600}
+.per-card .pd{font-size:12px;color:var(--gray);display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.per-card .pe{margin-left:auto;color:var(--gray);font-size:13px;padding:6px;flex-shrink:0}
+
+/* ---------- chat ---------- */
+#chat-log{flex:1;overflow-y:auto;padding:16px;max-width:640px;width:100%;margin:0 auto;font-family:var(--mincho)}
+.msg{margin-bottom:18px}
+.msg .name{font-size:11px;color:var(--gray);font-family:var(--sans);margin-bottom:3px;padding:0 2px}
+.msg.user{display:flex;flex-direction:column;align-items:flex-end}
+.msg.user .row{display:flex;gap:8px;align-items:flex-start;justify-content:flex-end;max-width:100%}
+.msg.user .avatar{width:36px;height:36px;font-size:15px}
+.msg.user .bubble{
+  background:var(--bubble-user);color:#fff;border-radius:16px 16px 4px 16px;
+  padding:10px 14px;max-width:75vw;white-space:pre-wrap;word-break:break-word;
+}
+.msg.ai .body{min-width:0}
+.dlg-row{display:flex;gap:8px;align-items:flex-start;margin:8px 0}
+.dlg-row .avatar{width:36px;height:36px;font-size:15px;flex-shrink:0}
+.dlg-inner{min-width:0}
+.dlg-inner .name{margin-bottom:2px}
+.narr{
+  color:var(--narr);
+  padding:2px 4px;margin:6px 0;white-space:pre-wrap;word-break:break-word;
+}
+.narr::before{
+  content:"";display:inline-block;width:9px;height:9px;
+  background:var(--narr);border-radius:2px;margin-right:8px;
+  vertical-align:baseline;
+}
+.unarr{
+  color:var(--narr);text-align:right;
+  padding:2px 4px;margin:6px 0;max-width:85%;
+  white-space:pre-wrap;word-break:break-word;align-self:flex-end;
+}
+.unarr::after{
+  content:"";display:inline-block;width:9px;height:9px;
+  background:var(--narr);border-radius:2px;margin-left:8px;
+  vertical-align:baseline;
+}
+.dlg{
+  background:var(--bubble-ai);color:#fff;
+  border-radius:4px 16px 16px 16px;
+  padding:10px 14px;margin:6px 0;display:inline-block;max-width:100%;
+  white-space:pre-wrap;word-break:break-word;
+}
+.msg.ai .tools{display:flex;gap:14px;margin-top:4px;padding-left:2px}
+.msg.ai .tools button{font-size:12px;color:var(--gray);padding:4px 2px;font-family:var(--sans)}
+.typing{color:var(--gray);font-family:var(--mincho);letter-spacing:.3em;padding:4px}
+@media (prefers-reduced-motion: no-preference){
+  .typing{animation:blink 1.4s infinite}
+  @keyframes blink{0%,100%{opacity:.3}50%{opacity:1}}
+}
+.errmsg{
+  color:var(--danger);font-size:13px;background:#F7ECEA;
+  border:1px solid #E5CBc7;border-radius:10px;padding:10px 12px;margin-bottom:16px;
+  white-space:pre-wrap;word-break:break-word;
+}
+.composer{
+  position:sticky;bottom:0;background:var(--paper);border-top:1px solid var(--line);
+  padding:10px 12px calc(env(safe-area-inset-bottom) + 10px);
+}
+.composer .inner{display:flex;gap:8px;max-width:640px;margin:0 auto;align-items:flex-end}
+.composer textarea{min-height:42px;max-height:140px;border-radius:14px;flex:1}
+.send{
+  width:44px;height:42px;border-radius:12px;background:var(--ai);color:#fff;
+  font-size:17px;flex-shrink:0;
+}
+.send:disabled{opacity:.4}
+.astbtn{
+  width:40px;height:42px;border-radius:12px;
+  background:var(--white);border:1px solid var(--line);color:var(--gray);
+  font-size:15px;flex-shrink:0;
+}
+.astbtn:disabled{opacity:.4}
+.jump-latest{
+  position:fixed;right:16px;bottom:calc(env(safe-area-inset-bottom) + 84px);
+  width:40px;height:40px;border-radius:50%;
+  background:var(--white);border:1px solid var(--line);color:var(--gray);
+  box-shadow:0 2px 8px rgba(0,0,0,.12);z-index:20;display:none;
+  align-items:center;justify-content:center;font-size:15px;
+}
+
+/* ---------- modal ---------- */
+.modal{
+  display:none;position:fixed;inset:0;z-index:50;
+  background:rgba(43,42,40,.45);
+  align-items:flex-end;justify-content:center;
+}
+.modal.open{display:flex}
+.sheet{
+  background:var(--paper);width:100%;max-width:640px;
+  border-radius:18px 18px 0 0;padding:20px 18px calc(env(safe-area-inset-bottom) + 20px);
+  max-height:88dvh;overflow-y:auto;
+}
+.sheet h2{font-family:var(--mincho);font-size:17px;letter-spacing:.15em;margin-bottom:4px}
+.avatar-edit{display:flex;align-items:center;gap:14px;margin-top:8px}
+.avatar-edit .avatar{width:64px;height:64px;font-size:24px}
+.avatar-edit button{font-size:13px;color:var(--ai);padding:8px}
+</style>
+</head>
+<body>
+
+<!-- ================= HOME ================= -->
+<div class="view active" id="view-home">
+  <div class="topbar">
+    <h1>幕</h1>
+    <span class="sub">-maku-</span>
+    <button class="iconbtn" id="btn-persona" aria-label="ペルソナ設定" title="ペルソナ">👤</button>
+    <button class="iconbtn" id="btn-settings" aria-label="API設定" title="設定">⚙</button>
+  </div>
+  <div class="content">
+    <div id="char-list"></div>
+    <button class="ghost" id="btn-add-char">＋ キャラクターを追加</button>
+  </div>
+</div>
+
+<!-- ================= SITUATION PICK ================= -->
+<div class="view" id="view-sit">
+  <div class="topbar">
+    <button class="iconbtn" data-back="home" aria-label="戻る">←</button>
+    <h1 id="sit-char-name" style="letter-spacing:.1em;font-size:17px"></h1>
+  </div>
+  <div class="content">
+    <div class="hint" style="margin-bottom:12px">シチュエーションを選ぶと開演。</div>
+    <div id="sit-list"></div>
+  </div>
+</div>
+
+<!-- ================= CHAT ================= -->
+<div class="view" id="view-chat">
+  <div class="topbar">
+    <button class="iconbtn" data-back="sit" aria-label="戻る">←</button>
+    <h1 id="chat-title" style="letter-spacing:.1em;font-size:17px"></h1>
+    <button class="iconbtn" id="btn-memory" aria-label="記憶" title="記憶">🧠</button>
+    <button class="iconbtn" id="btn-reset" aria-label="最初からやり直す" title="リセット">↺</button>
+  </div>
+  <div id="chat-log"></div>
+  <button class="jump-latest" id="btn-jump-latest" aria-label="最新へ">▼</button>
+  <div class="composer">
+    <div class="inner">
+      <button class="astbtn" id="btn-continue" aria-label="話を進める" title="ユーザー発言なしで続きを生成">▶</button>
+      <button class="astbtn" id="btn-ast" aria-label="アスタリスク挿入" title="*斜体*を挿入">＊</button>
+      <textarea id="chat-input" rows="1" placeholder="メッセージ…"></textarea>
+      <button class="send" id="btn-send" aria-label="送信">↑</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= CHAR EDIT MODAL ================= -->
+<div class="modal" id="modal-char">
+  <div class="sheet">
+    <h2 id="char-modal-title">キャラクター編集</h2>
+    <div class="avatar-edit">
+      <div class="avatar" id="edit-avatar-preview"></div>
+      <button id="btn-pick-icon">画像を選ぶ</button>
+      <input type="file" id="icon-file" accept="image/*" style="display:none">
+    </div>
+    <label>名前</label>
+    <input id="edit-name" placeholder="堵城蓮">
+    <label>人格プロンプト</label>
+    <textarea id="edit-prompt" rows="8" placeholder="行動骨格・情報処理パターンなど。ここがそのままsystemに入る。"></textarea>
+    <label>シチュエーション</label>
+    <div id="edit-sits"></div>
+    <button class="ghost" id="btn-add-sit" style="margin-top:8px">＋ シチュエーション追加</button>
+    <button class="primary" id="btn-save-char">保存</button>
+    <button class="ghost" data-close>閉じる</button>
+    <button class="danger-text" id="btn-del-char">このキャラクターを削除</button>
+  </div>
+</div>
+
+<!-- ================= SETTINGS MODAL ================= -->
+<div class="modal" id="modal-settings">
+  <div class="sheet">
+    <h2>API設定</h2>
+    <label>APIキー</label>
+    <input id="set-key" type="password" placeholder="AIza...">
+    <div class="hint">Google AI Studioの「Get API key」で発行したキーを貼る。</div>
+    <label>モデル</label>
+    <input id="set-model" placeholder="例: gemma-4-31b-it">
+    <div class="hint">AI Studioのモデル一覧に出てる名前をそのまま。あとから何度でも差し替え可。</div>
+    <label>APIエンドポイント(OpenAI互換)</label>
+    <input id="set-endpoint" placeholder="https://...">
+    <div class="hint">通常は触らなくてOK。OpenRouter等に乗り換えるときだけここを書き換える。</div>
+    <label>最大トークン数</label>
+    <input id="set-max" type="number" value="1024" min="128" max="8192">
+    <label>temperature(0〜2)</label>
+    <input id="set-temp" type="number" value="0.9" min="0" max="2" step="0.1">
+    <label>コンテキスト送信件数(直近N件)</label>
+    <input id="set-context" type="number" value="30" min="4" max="200">
+    <div class="hint">舞台が長くなるほど毎回全部は送らず直近N件だけ送る。古い経緯は🧠「記憶」に書いておくと精度が落ちにくい。</div>
+    <button class="primary" id="btn-save-settings">保存</button>
+    <button class="ghost" data-close>閉じる</button>
+
+    <h2 style="margin-top:24px">データのバックアップ</h2>
+    <div class="hint">Safariの「Webサイトデータを削除」などで全部消える前に、定期的にエクスポートしておくのが安全。</div>
+    <label class="per-card" style="display:flex;align-items:center;gap:8px;padding:10px 12px;margin-top:10px">
+      <input type="checkbox" id="set-export-key" style="width:auto">
+      <span style="font-size:13px">APIキーも含める</span>
+    </label>
+    <button class="ghost" id="btn-export">↓ エクスポート(JSONで保存)</button>
+    <button class="ghost" id="btn-import">↑ インポート(JSONから復元)</button>
+    <input type="file" id="import-file" accept="application/json" style="display:none">
+    <div class="danger-text" style="display:none" id="import-status"></div>
+  </div>
+</div>
+
+<!-- ================= PERSONA MODAL ================= -->
+<div class="modal" id="modal-persona">
+  <div class="sheet">
+    <h2>ペルソナ</h2>
+    <div class="hint">キャラクターに認識させる「あなた」。タップで切替、もう一度タップで解除(名無しの観客になる)。</div>
+    <div id="per-list" style="margin-top:12px"></div>
+    <button class="ghost" id="btn-add-per">＋ ペルソナ追加</button>
+    <div id="per-edit" style="display:none">
+      <div class="avatar-edit">
+        <div class="avatar" id="per-avatar-preview"></div>
+        <button id="btn-pick-per-icon">画像を選ぶ</button>
+        <input type="file" id="per-icon-file" accept="image/*" style="display:none">
+      </div>
+      <label>名前</label>
+      <input id="per-name" placeholder="まいこ">
+      <label>設定・説明</label>
+      <textarea id="per-desc" rows="4" placeholder="30歳、歯科衛生士。など"></textarea>
+      <button class="primary" id="btn-save-persona">保存</button>
+      <button class="danger-text" id="btn-del-per">このペルソナを削除</button>
+    </div>
+    <button class="ghost" data-close>閉じる</button>
+  </div>
+</div>
+
+<!-- ================= MSG EDIT MODAL ================= -->
+<div class="modal" id="modal-msgedit">
+  <div class="sheet">
+    <h2>メッセージを編集</h2>
+    <textarea id="msg-edit-text" rows="5" style="margin-top:12px"></textarea>
+    <button class="primary" id="btn-msg-save">保存</button>
+    <button class="ghost" id="btn-msg-regen">保存して続きを作り直す</button>
+    <button class="ghost" data-close>キャンセル</button>
+  </div>
+</div>
+
+<!-- ================= MEMORY MODAL ================= -->
+<div class="modal" id="modal-memory">
+  <div class="sheet">
+    <h2>記憶</h2>
+    <div class="hint">直近のやり取り以外に覚えておいてほしい経緯を書いておく。この舞台のシステムプロンプトに毎回差し込まれる。長く続く舞台では、古い部分は自動送信されなくなる分をここで補うのがおすすめ。</div>
+    <textarea id="memory-text" rows="8" style="margin-top:10px" placeholder="例: 二人はもともと幼馴染で、3年前に一度気まずくなって疎遠になっていた。今回の舞台はその再会から始まる。"></textarea>
+    <button class="primary" id="btn-memory-save">保存</button>
+    <button class="ghost" data-close>閉じる</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ========== storage(壊れても落ちないようガード) ========== */
+const store = {
+  get(k, fallback){
+    try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; }
+    catch(e){ return fallback; }
+  },
+  set(k, v){
+    try{ localStorage.setItem(k, JSON.stringify(v)); }
+    catch(e){ alert("保存に失敗(容量超過の可能性)。画像を減らすか小さくしてみて。"); }
+  },
+  del(k){ try{ localStorage.removeItem(k); }catch(e){} }
+};
+
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+/* ========== state ========== */
+const DEFAULT_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+let settings = store.get("maku_settings", { apiKey:"", model:"", maxTokens:1024, temperature:0.9, endpoint: DEFAULT_ENDPOINT, contextWindow:30 });
+if(!settings.endpoint) settings.endpoint = DEFAULT_ENDPOINT; // 旧データ移行
+if(!settings.contextWindow) settings.contextWindow = 30;     // 旧データ移行
+let personaData = store.get("maku_personas", null);
+if(!personaData){
+  // 旧・単一ペルソナからの移行
+  const old = store.get("maku_persona", null);
+  personaData = { list: [], activeId: null };
+  if(old && (old.name || old.desc)){
+    const p = { id: uid(), name: old.name, desc: old.desc };
+    personaData.list.push(p);
+    personaData.activeId = p.id;
+  }
+  store.set("maku_personas", personaData);
+}
+const activePersona = () => personaData.list.find(p => p.id === personaData.activeId) || null;
+let chars    = store.get("maku_chars", []);
+let current  = { charId:null, sitId:null };   // 現在の舞台
+let editing  = null;                           // 編集中キャラ(コピー)
+let busy     = false;
+
+const $ = (id) => document.getElementById(id);
+const sessionKey = (c, s) => `maku_session_${c}_${s}`;
+const getChar = (id) => chars.find(c => c.id === id);
+const getSit  = (ch, sid) => ch && ch.situations.find(s => s.id === sid);
+
+/* ========== view switch ========== */
+function show(name){
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  $("view-" + name).classList.add("active");
+}
+document.querySelectorAll("[data-back]").forEach(b => {
+  b.addEventListener("click", () => {
+    const t = b.dataset.back;
+    if(t === "home") renderHome();
+    if(t === "sit")  openSitPicker(current.charId);
+    show(t);
+  });
+});
+
+/* ========== modal helpers ========== */
+function openModal(id){ $(id).classList.add("open"); }
+function closeModal(id){ $(id).classList.remove("open"); }
+document.querySelectorAll(".modal").forEach(m => {
+  m.addEventListener("click", (e) => { if(e.target === m) m.classList.remove("open"); });
+  m.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", () => m.classList.remove("open")));
+});
+
+/* ========== home ========== */
+function avatarHTML(ch, cls){
+  const inner = ch.icon ? `<img src="${ch.icon}" alt="">` : (ch.name ? ch.name[0] : "？");
+  return `<div class="avatar ${cls||""}">${inner}</div>`;
+}
+function renderHome(){
+  const list = $("char-list");
+  if(chars.length === 0){
+    list.innerHTML = `<div class="empty">まだ誰もいない。<br>最初のキャラクターを迎えよう。</div>`;
+    return;
+  }
+  list.innerHTML = "";
+  chars.forEach(ch => {
+    const btn = document.createElement("button");
+    btn.className = "char-card";
+    btn.innerHTML = `${avatarHTML(ch)}
+      <div><div class="name"></div><div class="meta">${ch.situations.length} シチュエーション</div></div>
+      <span class="edit" data-edit="${ch.id}">編集</span>`;
+    btn.querySelector(".name").textContent = ch.name || "(名無し)";
+    btn.addEventListener("click", (e) => {
+      if(e.target.dataset.edit){ openCharEditor(ch.id); return; }
+      openSitPicker(ch.id); show("sit");
+    });
+    list.appendChild(btn);
+  });
+}
+
+/* ========== char editor ========== */
+function openCharEditor(id){
+  if(id){
+    const src = getChar(id);
+    editing = JSON.parse(JSON.stringify(src));
+    $("char-modal-title").textContent = "キャラクター編集";
+    $("btn-del-char").style.display = "block";
+  }else{
+    editing = { id: uid(), name:"", icon:"", prompt:"", situations:[ blankSit() ] };
+    $("char-modal-title").textContent = "キャラクター追加";
+    $("btn-del-char").style.display = "none";
+  }
+  $("edit-name").value = editing.name;
+  $("edit-prompt").value = editing.prompt;
+  renderAvatarPreview();
+  renderSitEditors();
+  openModal("modal-char");
+}
+function blankSit(){ return { id: uid(), title:"", scenario:"", first:"" }; }
+function renderAvatarPreview(){
+  $("edit-avatar-preview").innerHTML = editing.icon
+    ? `<img src="${editing.icon}" alt="">`
+    : (editing.name ? editing.name[0] : "？");
+}
+function renderSitEditors(){
+  const box = $("edit-sits");
+  box.innerHTML = "";
+  editing.situations.forEach((s, i) => {
+    const div = document.createElement("div");
+    div.className = "sit-block";
+    div.innerHTML = `
+      <div class="sit-head"><strong>#${i+1}</strong>
+        <button class="sit-del">削除</button></div>
+      <label>タイトル</label><input class="s-title" placeholder="雨の日のオフィス">
+      <label>状況設定(舞台・関係性・導入)</label><textarea class="s-scn" rows="3"></textarea>
+      <label>最初のメッセージ(キャラの第一声)</label><textarea class="s-first" rows="3"></textarea>`;
+    div.querySelector(".s-title").value = s.title;
+    div.querySelector(".s-scn").value = s.scenario;
+    div.querySelector(".s-first").value = s.first;
+    div.querySelector(".s-title").addEventListener("input", e => s.title = e.target.value);
+    div.querySelector(".s-scn").addEventListener("input", e => s.scenario = e.target.value);
+    div.querySelector(".s-first").addEventListener("input", e => s.first = e.target.value);
+    div.querySelector(".sit-del").addEventListener("click", () => {
+      if(editing.situations.length <= 1){ alert("シチュエーションは最低1つ必要。"); return; }
+      editing.situations.splice(i, 1);
+      renderSitEditors();
+    });
+    box.appendChild(div);
+  });
+}
+$("btn-add-sit").addEventListener("click", () => { editing.situations.push(blankSit()); renderSitEditors(); });
+$("btn-add-char").addEventListener("click", () => openCharEditor(null));
+$("edit-name").addEventListener("input", e => { editing.name = e.target.value; renderAvatarPreview(); });
+$("edit-prompt").addEventListener("input", e => { editing.prompt = e.target.value; });
+
+$("btn-pick-icon").addEventListener("click", () => $("icon-file").click());
+// 画像を正方形に縮小してdataURLにする共通処理
+function fileToIcon(f, cb){
+  const img = new Image();
+  const reader = new FileReader();
+  reader.onload = () => {
+    img.onload = () => {
+      const size = 160;
+      const cv = document.createElement("canvas");
+      cv.width = size; cv.height = size;
+      const cx = cv.getContext("2d");
+      const r = Math.max(size / img.width, size / img.height);
+      const w = img.width * r, h = img.height * r;
+      cx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+      cb(cv.toDataURL("image/jpeg", 0.82));
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(f);
+}
+$("icon-file").addEventListener("change", (e) => {
+  const f = e.target.files[0];
+  if(!f) return;
+  fileToIcon(f, (url) => { editing.icon = url; renderAvatarPreview(); });
+  e.target.value = "";
+});
+
+$("btn-save-char").addEventListener("click", () => {
+  if(!editing.name.trim()){ alert("名前を入れてね。"); return; }
+  const idx = chars.findIndex(c => c.id === editing.id);
+  if(idx >= 0) chars[idx] = editing; else chars.push(editing);
+  store.set("maku_chars", chars);
+  closeModal("modal-char");
+  renderHome();
+});
+$("btn-del-char").addEventListener("click", () => {
+  if(!confirm(`「${editing.name}」を削除する?セッションも消えるよ。`)) return;
+  editing.situations.forEach(s => store.del(sessionKey(editing.id, s.id)));
+  chars = chars.filter(c => c.id !== editing.id);
+  store.set("maku_chars", chars);
+  closeModal("modal-char");
+  renderHome();
+});
+
+/* ========== situation picker ========== */
+function hasSessionHistory(charId, sitId){
+  const raw = store.get(sessionKey(charId, sitId), null);
+  if(!raw) return false;
+  if(Array.isArray(raw)) return raw.length > 0;              // 旧形式
+  if(raw.v === 2) return !!raw.leaf && !!raw.nodes && Object.keys(raw.nodes).length > 0;
+  return false;
+}
+function openSitPicker(charId){
+  current.charId = charId;
+  const ch = getChar(charId);
+  $("sit-char-name").textContent = ch.name;
+  const list = $("sit-list");
+  list.innerHTML = "";
+  ch.situations.forEach(s => {
+    const hasHist = hasSessionHistory(ch.id, s.id);
+    const b = document.createElement("button");
+    b.className = "sit-pick";
+    b.innerHTML = `<div class="t"></div><div class="d"></div>${hasHist ? '<div class="resume">▶ 続きから再開できる</div>' : ""}`;
+    b.querySelector(".t").textContent = s.title || "(無題)";
+    b.querySelector(".d").textContent = s.scenario;
+    b.addEventListener("click", () => startChat(ch.id, s.id));
+    list.appendChild(b);
+  });
+}
+
+/* ========== chat: tree data layer ========== */
+let session = null; // { v:2, nodes:{id:{id,p,role,content,t,lc}}, leaf, memory }
+
+function emptySession(){ return { v: 2, nodes: {}, leaf: null, memory: "" }; }
+function addNode(sess, parentId, role, content){
+  const node = { id: uid(), p: parentId, role, content, t: Date.now(), lc: null };
+  sess.nodes[node.id] = node;
+  if(parentId && sess.nodes[parentId]) sess.nodes[parentId].lc = node.id;
+  sess.leaf = node.id;
+  return node;
+}
+function getPath(sess, fromId){
+  const path = [];
+  let id = (fromId !== undefined) ? fromId : sess.leaf;
+  while(id){
+    const n = sess.nodes[id];
+    if(!n) break;
+    path.push(n);
+    id = n.p;
+  }
+  path.reverse();
+  return path;
+}
+function siblingsOf(sess, node){
+  return Object.values(sess.nodes)
+    .filter(n => n.p === node.p)
+    .sort((a, b) => a.t - b.t);
+}
+function deepestLeafFrom(sess, nodeId){
+  let id = nodeId;
+  while(true){
+    const n = sess.nodes[id];
+    if(!n || !n.lc || !sess.nodes[n.lc]) return id;
+    id = n.lc;
+  }
+}
+// 旧・フラット配列形式 → v2ツリーへの変換(一度だけバックアップを残す)
+function migrateSession(key, raw){
+  const backupKey = "maku_backup_" + key;
+  if(!store.get(backupKey, null)){
+    try{ store.set(backupKey, raw); }catch(e){ /* 容量超過なら諦めて続行 */ }
+  }
+  const sess = emptySession();
+  let parentId = null;
+  raw.forEach(m => {
+    const node = addNode(sess, parentId, m.role, m.content);
+    parentId = node.id;
+  });
+  store.set(key, sess);
+  return sess;
+}
+function loadSession(charId, sitId){
+  const key = sessionKey(charId, sitId);
+  const raw = store.get(key, null);
+  if(raw === null) return null;
+  if(Array.isArray(raw)) return raw.length ? migrateSession(key, raw) : null;
+  if(raw.v === 2) return raw;
+  return null; // 未知の形式は諦めて新規扱い
+}
+
+function startChat(charId, sitId){
+  current = { charId, sitId };
+  const ch = getChar(charId), s = getSit(ch, sitId);
+  $("chat-title").textContent = `${ch.name}『${s.title || "無題"}』`;
+  session = loadSession(charId, sitId) || emptySession();
+  if(Object.keys(session.nodes).length === 0 && s.first){
+    addNode(session, null, "assistant", s.first);
+    saveSession();
+  }
+  renderLog();
+  show("chat");
+}
+function saveSession(){ store.set(sessionKey(current.charId, current.sitId), session); }
+
+function buildSystem(){
+  const ch = getChar(current.charId), s = getSit(ch, current.sitId);
+  const parts = [];
+  parts.push(`あなたはロールプレイの相手役「${ch.name}」を演じる。以下の設定を厳守する。`);
+  parts.push(`# キャラクター設定\n${ch.prompt}`);
+  if(s.scenario) parts.push(`# 現在の状況\n${s.scenario}`);
+  if(session && session.memory && session.memory.trim()){
+    parts.push(`# これまでの経緯(記憶)\n${session.memory.trim()}`);
+  }
+  const per = activePersona();
+  if(per && (per.name || per.desc)){
+    parts.push(`# 相手(ユーザー)の情報\n名前: ${per.name || "(未設定)"}\n${per.desc || ""}`.trim());
+  }
+  parts.push(
+`# 文体ルール
+- セリフは「」で囲む。地の文(描写・動作・情景)は「」の外に書く。
+- セリフの「」は必ず独立した行に書く。地の文の中に埋め込まない。
+- 地の文の中で引用・回想・看板の文字などを書くときは「」ではなく『』を使う。
+- セリフと地の文はおおよそ半々のバランス。
+- 地の文は${ch.name}の視点で、三人称または一人称の小説的な描写にする。
+- 強調したい語は*斜体*、強い感情は**太字**で書いてよい(使いすぎない)。
+- ユーザーの入力では、*斜体*で囲まれた部分はユーザー側の動作・情景の描写、それ以外はユーザーのセリフとして解釈する。
+- ユーザーのセリフや行動を勝手に書かない。${ch.name}側の応答だけを書く。
+- 1回の応答は長すぎず、相手が返しやすい長さで区切る。
+- モブ(店員・通行人・脇役など)は必要に応じて自由に登場させてよい。モブのセリフは独立した行に 名前「セリフ」 の形式(行頭に話者名)で書く。`);
+  return parts.join("\n\n");
+}
+
+// markdown-lite: **太字** と *斜体* のみ対応。innerHTMLは使わずノードを組み立てる。
+// 閉じていない記法はそのまま文字として表示する(誤爆で消えたりしない)。
+function appendMarkdownLite(container, text){
+  const re = /\*\*([^\*]+?)\*\*|\*([^\*]+?)\*/g;
+  let last = 0, m;
+  while((m = re.exec(text)) !== null){
+    if(m.index > last){
+      container.appendChild(document.createTextNode(text.slice(last, m.index)));
+    }
+    if(m[1] !== undefined){
+      const strong = document.createElement("strong");
+      strong.textContent = m[1];
+      container.appendChild(strong);
+    }else{
+      const em = document.createElement("em");
+      em.textContent = m[2];
+      container.appendChild(em);
+    }
+    last = m.index + m[0].length;
+  }
+  if(last < text.length){
+    container.appendChild(document.createTextNode(text.slice(last)));
+  }
+}
+
+// テキストを「地の文」「セリフ」のブロック列に分割する(行ベース判定)。
+// セリフと判定するのは独立行の「…」のみ。地の文中に埋め込まれた「」は地の文のまま。
+const SEIFU_LINE_RE = /^「[\s\S]*」[。、…!?!?〜~\s　]*$/;
+const SEIFU_CLOSE_RE = /」[。、…!?!?〜~\s　]*$/;
+function splitIntoBlocks(text){
+  const lines = text.split("\n");
+  const blocks = [];
+  let narrBuf = [];
+  const flushNarr = () => {
+    if(!narrBuf.length) return;
+    const joined = narrBuf.join("\n").replace(/^\n+|\n+$/g, "");
+    if(joined.trim()) blocks.push({ type: "narr", text: joined });
+    narrBuf = [];
+  };
+  let i = 0;
+  while(i < lines.length){
+    const line = lines[i];
+    const trimmed = line.trim();
+    if(trimmed === ""){ narrBuf.push(line); i++; continue; }
+    if(trimmed.startsWith("「")){
+      if(SEIFU_LINE_RE.test(trimmed)){
+        // その行だけで閉じている独立セリフ
+        flushNarr();
+        blocks.push({ type: "dlg", text: trimmed });
+        i++;
+        continue;
+      }
+      // 複数行にまたがるセリフの可能性 → 閉じの」が出るまで蓄積
+      const buf = [line];
+      let j = i + 1, closed = false;
+      while(j < lines.length){
+        buf.push(lines[j]);
+        if(SEIFU_CLOSE_RE.test(buf.join("\n").trim())){ closed = true; break; }
+        j++;
+      }
+      if(closed){
+        flushNarr();
+        blocks.push({ type: "dlg", text: buf.join("\n").trim() });
+        i = j + 1;
+        continue;
+      }
+      // 最後まで閉じなかった → 誤爆させず地の文として扱う
+      narrBuf.push(...buf);
+      i = j + 1;
+      continue;
+    }
+    narrBuf.push(line);
+    i++;
+  }
+  flushNarr();
+  return blocks;
+}
+
+function renderContent(container, text, ch){
+  const flushNarr = (str) => {
+    const d = document.createElement("div");
+    d.className = "narr";
+    appendMarkdownLite(d, str);
+    container.appendChild(d);
+  };
+  const pushDlg = (str) => {
+    const row = document.createElement("div");
+    row.className = "dlg-row";
+    row.insertAdjacentHTML("beforeend", avatarHTML(ch));
+    const inner = document.createElement("div");
+    inner.className = "dlg-inner";
+    const n = document.createElement("div");
+    n.className = "name"; n.textContent = ch.name;
+    const d = document.createElement("div");
+    d.className = "dlg";
+    appendMarkdownLite(d, str);
+    inner.appendChild(n); inner.appendChild(d);
+    row.appendChild(inner);
+    container.appendChild(row);
+  };
+  const blocks = splitIntoBlocks(text || "");
+  blocks.forEach(b => b.type === "dlg" ? pushDlg(b.text) : flushNarr(b.text));
+  if(!container.childNodes.length){
+    flushNarr(text || "…");
+  }
+}
+
+
+function buildSiblingNav(node){
+  const sibs = siblingsOf(session, node);
+  if(sibs.length < 2) return null;
+  const idx = sibs.findIndex(n => n.id === node.id);
+  const nav = document.createElement("span");
+  nav.style.display = "inline-flex"; nav.style.gap = "6px"; nav.style.alignItems = "center";
+  const prev = document.createElement("button");
+  prev.textContent = "◀"; prev.disabled = idx <= 0;
+  prev.addEventListener("click", () => switchSibling(node, -1));
+  const label = document.createElement("span");
+  label.textContent = `${idx + 1}/${sibs.length}`;
+  label.style.fontSize = "12px"; label.style.color = "var(--gray)";
+  const next = document.createElement("button");
+  next.textContent = "▶"; next.disabled = idx >= sibs.length - 1;
+  next.addEventListener("click", () => switchSibling(node, 1));
+  const del = document.createElement("button");
+  del.textContent = "🗑"; del.title = "この枝を削除";
+  del.addEventListener("click", () => deleteBranch(node.id));
+  nav.appendChild(prev); nav.appendChild(label); nav.appendChild(next); nav.appendChild(del);
+  return nav;
+}
+
+function scrollLogToBottom(smooth){
+  const log = $("chat-log");
+  const opt = smooth ? { behavior: "smooth" } : {};
+  if(log.scrollHeight - log.clientHeight > 1){
+    log.scrollTo({ top: log.scrollHeight, ...opt });
+  }
+  const docEl = document.documentElement;
+  if(docEl.scrollHeight - window.innerHeight > 1){
+    window.scrollTo({ top: docEl.scrollHeight, ...opt });
+  }
+  // スクロールが発生しなかった場合(短い枝への切替等)もボタン表示を再評価する
+  updateJumpLatestVisibility();
+}
+function renderLog(){
+  const log = $("chat-log");
+  log.innerHTML = "";
+  const ch = getChar(current.charId);
+  const per = activePersona();
+  const path = getPath(session);
+  path.forEach((node, i) => {
+    if(node.h){
+      // 自動送り用の隠しノード: 本文は表示せず進行マーカーのみ。編集不可。兄弟ナビだけは出す(枝から戻れなくなるため必須)。
+      const d = document.createElement("div");
+      d.style.cssText = "text-align:center;color:var(--gray);font-size:12px;font-family:var(--sans);margin:10px 0;";
+      d.textContent = "⏩";
+      const nav = buildSiblingNav(node);
+      if(nav){
+        nav.style.display = "inline-flex";
+        nav.style.marginLeft = "8px";
+        nav.style.verticalAlign = "middle";
+        d.appendChild(nav);
+      }
+      log.appendChild(d);
+      return;
+    }
+    const div = document.createElement("div");
+    div.className = "msg " + (node.role === "user" ? "user" : "ai");
+    if(node.role === "user"){
+      if(per && per.name){
+        const n = document.createElement("div");
+        n.className = "name"; n.textContent = per.name;
+        div.appendChild(n);
+      }
+      // 行全体が *…* の部分 → 吹き出けの外の地の文(ユーザー側)。それ以外の行 → セリフバブル。
+      const lines = node.content.split("\n");
+      const segs = [];
+      let buf = [];
+      const flushBuf = () => {
+        const t = buf.join("\n").replace(/^\n+|\n+$/g, "");
+        if(t.trim()) segs.push({ type: "speech", text: t });
+        buf = [];
+      };
+      lines.forEach(line => {
+        const trimmed = line.trim();
+        if(/^\*[^*]+\*$/.test(trimmed)){
+          flushBuf();
+          segs.push({ type: "unarr", text: trimmed.slice(1, -1) });
+        }else{
+          buf.push(line);
+        }
+      });
+      flushBuf();
+      if(!segs.length) segs.push({ type: "speech", text: node.content });
+
+      segs.forEach((seg, si) => {
+        if(seg.type === "unarr"){
+          const d = document.createElement("div");
+          d.className = "unarr";
+          appendMarkdownLite(d, seg.text);
+          d.style.cursor = "pointer";
+          d.addEventListener("click", () => openMsgEditor(node.id));
+          div.appendChild(d);
+        }else{
+          const row = document.createElement("div"); row.className = "row";
+          const b = document.createElement("div");
+          b.className = "bubble";
+          appendMarkdownLite(b, seg.text);
+          b.style.cursor = "pointer";
+          b.addEventListener("click", () => openMsgEditor(node.id));
+          row.appendChild(b);
+          // アバターは最初のバブルにだけ付ける
+          if(per && !div.querySelector(".avatar")){
+            row.insertAdjacentHTML("beforeend", avatarHTML(per));
+          }
+          div.appendChild(row);
+        }
+      });
+      // 編集で分岐したuserメッセージにも兄弟ナビを出す
+      const nav = buildSiblingNav(node);
+      const isLastUser = (i === path.length - 1); // 末端がuser=返信が来なかった(生成失敗)
+      if(nav || isLastUser){
+        const tools = document.createElement("div"); tools.className = "tools";
+        tools.style.textAlign = "right";
+        if(nav) tools.appendChild(nav);
+        if(isLastUser){
+          const rs = document.createElement("button");
+          rs.textContent = "↻ 送り直す";
+          rs.addEventListener("click", () => generate(node.id));
+          tools.appendChild(rs);
+        }
+        div.appendChild(tools);
+      }
+    }else{
+      const body = document.createElement("div"); body.className = "body";
+      renderContent(body, node.content, ch);
+      const isLast = (i === path.length - 1);
+      const nav = buildSiblingNav(node);
+      // 兄弟がある途中ノード、または最後のAI応答(最初の一言以外)にツールバー
+      if(nav || (isLast && node.p !== null)){
+        const tools = document.createElement("div"); tools.className = "tools";
+        if(nav) tools.appendChild(nav);
+        if(isLast && node.p !== null){
+          const rb = document.createElement("button");
+          rb.textContent = "↺ 引き直す";
+          rb.addEventListener("click", reroll);
+          tools.appendChild(rb);
+        }
+        body.appendChild(tools);
+      }
+      div.appendChild(body);
+    }
+    log.appendChild(div);
+  });
+  scrollLogToBottom(false);
+}
+function switchSibling(node, direction){
+  if(busy) return;
+  const sibs = siblingsOf(session, node);
+  const idx = sibs.findIndex(n => n.id === node.id);
+  const targetIdx = idx + direction;
+  if(targetIdx < 0 || targetIdx >= sibs.length) return;
+  session.leaf = deepestLeafFrom(session, sibs[targetIdx].id);
+  saveSession();
+  renderLog();
+}
+function collectDescendants(sess, rootId){
+  // rootIdとその子孫のid一覧を返す
+  const childrenOf = {};
+  Object.values(sess.nodes).forEach(n => {
+    if(n.p !== null){
+      (childrenOf[n.p] = childrenOf[n.p] || []).push(n.id);
+    }
+  });
+  const out = [];
+  const stack = [rootId];
+  while(stack.length){
+    const id = stack.pop();
+    out.push(id);
+    (childrenOf[id] || []).forEach(c => stack.push(c));
+  }
+  return out;
+}
+function deleteBranch(nodeId){
+  if(busy) return;
+  const node = session.nodes[nodeId];
+  if(!node) return;
+  const sibs = siblingsOf(session, node);
+  if(sibs.length < 2) return; // 最後の1本は消させない(リセットは別機能)
+  const doomed = collectDescendants(session, nodeId);
+  if(!confirm(`この枝を削除する?(この位置から先の${doomed.length}件が消える。戻せない)`)) return;
+  const doomedSet = new Set(doomed);
+  doomed.forEach(id => { delete session.nodes[id]; });
+  // 親のlastChildが消えた枝を指していたら、残った兄弟(最新)に付け替える
+  const remaining = sibs.filter(n => !doomedSet.has(n.id));
+  const fallback = remaining[remaining.length - 1];
+  if(node.p !== null && session.nodes[node.p] && doomedSet.has(session.nodes[node.p].lc)){
+    session.nodes[node.p].lc = fallback ? fallback.id : null;
+  }
+  // 今見ていた枝ごと消えた場合は、残った兄弟の末端へ移動
+  if(doomedSet.has(session.leaf) || !session.nodes[session.leaf]){
+    session.leaf = deepestLeafFrom(session, fallback.id);
+  }
+  saveSession();
+  renderLog();
+}
+
+function showError(text){
+  const log = $("chat-log");
+  const d = document.createElement("div");
+  d.className = "errmsg"; d.textContent = text;
+  log.appendChild(d);
+  scrollLogToBottom(false);
+}
+
+// systemロール非対応モデル(Gemma等)用: 一度400を食らったら以降は最初からフォールバック
+let noSystemMode = store.get("maku_nosys", false);
+
+function buildMessagesPayload(useSystem, uptoId){
+  const sys = buildSystem();
+  const fullPath = getPath(session, uptoId).map(n => ({ role: n.role, content: n.content }));
+  const windowSize = Math.max(4, Number(settings.contextWindow) || 30);
+  const msgs = fullPath.length > windowSize ? fullPath.slice(fullPath.length - windowSize) : fullPath;
+  if(useSystem) return [{ role:"system", content: sys }, ...msgs];
+  // 設定文を先頭のuserターンに折りたたむ(交互ロールが崩れないよう調整)
+  const setupText = sys + "\n\n---\nここまでが設定。以降、この設定に従ってロールプレイを続けること。";
+  if(msgs.length && msgs[0].role === "user"){
+    msgs[0] = { role:"user", content: setupText + "\n\n" + msgs[0].content };
+    return msgs;
+  }
+  return [{ role:"user", content: setupText }, ...msgs];
+}
+
+async function requestOnce(useSystem, uptoId){
+  const body = {
+    model: settings.model,
+    max_tokens: Number(settings.maxTokens) || 1024,
+    temperature: Number(settings.temperature),
+    messages: buildMessagesPayload(useSystem, uptoId)
+  };
+  const res = await fetch(settings.endpoint || DEFAULT_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + settings.apiKey
+    },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json().catch(() => null);
+  if(!res.ok){
+    const detail = data && data.error ? (data.error.message || JSON.stringify(data.error)) : `HTTP ${res.status}`;
+    const err = new Error(detail);
+    err.status = res.status;
+    throw err;
+  }
+  const content = data && data.choices && data.choices[0] && data.choices[0].message
+    ? data.choices[0].message.content : "";
+  if(!content) throw new Error("応答が空だった。モデル名が合ってるか確認してみて。");
+  return stripThought(content);
+}
+
+// Gemma等の思考過程(<thought>〜</thought>など)を本文から取り除く
+function stripThought(text){
+  let t = text;
+  // 閉じタグまで揃ったブロックを除去
+  t = t.replace(/<(thought|thinking|think)>[\s\S]*?<\/\1>/gi, "");
+  // 閉じ忘れ: 開きタグ以降が思考のみで終わるケースは、開きタグ以前に本文があればそこまでを採用
+  const open = t.match(/<(thought|thinking|think)>/i);
+  if(open){
+    const before = t.slice(0, open.index).trim();
+    if(before) t = before;
+  }
+  t = t.trim();
+  return t || text.trim(); // 全部消えたら原文のまま返す(白紙よりマシ)
+}
+
+async function callAPI(uptoId){
+  if(noSystemMode) return await requestOnce(false, uptoId);
+  try{
+    return await requestOnce(true, uptoId);
+  }catch(err){
+    // systemロール拒否っぽい400ならフォールバックして再試行
+    if(err.status === 400){
+      const content = await requestOnce(false, uptoId);
+      noSystemMode = true;
+      store.set("maku_nosys", true);
+      return content;
+    }
+    throw err;
+  }
+}
+
+async function generate(parentId){
+  // parentId: この親ノードの下に応答を生成する。省略時は現在のleaf。
+  // 成功したときだけ木に触る(エラー時はツリーもleafも一切変わらない)。
+  // 戻り値: 成功したらtrue、失敗(busy中の無視含む)ならfalse。
+  if(busy) return false;
+  if(!settings.apiKey || !settings.model){
+    showError("先に⚙設定でAPIキーとモデルを入れてね。");
+    openModal("modal-settings");
+    return false;
+  }
+  const target = (parentId !== undefined) ? parentId : session.leaf;
+  busy = true;
+  $("btn-send").disabled = true;
+  $("btn-continue").disabled = true;
+  const log = $("chat-log");
+  const t = document.createElement("div");
+  t.className = "typing"; t.textContent = "………";
+  log.appendChild(t); scrollLogToBottom(false);
+  try{
+    const reply = await callAPI(target);
+    addNode(session, target, "assistant", reply);
+    saveSession();
+    renderLog();
+    return true;
+  }catch(err){
+    t.remove();
+    showError("エラー: " + err.message);
+    return false;
+  }finally{
+    busy = false;
+    $("btn-send").disabled = false;
+    $("btn-continue").disabled = false;
+  }
+}
+
+function send(){
+  const input = $("chat-input");
+  const text = input.value.trim();
+  if(!text || busy) return;
+  const path = getPath(session);
+  const last = path[path.length - 1];
+  // 直前が返信のないuserノード(=生成失敗の残骸)なら、子ではなく兄弟として生やす。
+  // user→userの縦連結を作らないため。
+  const parentId = (last && last.role === "user") ? last.p : session.leaf;
+  addNode(session, parentId, "user", text);
+  saveSession();
+  input.value = ""; input.style.height = "auto";
+  renderLog();
+  generate(session.leaf);
+}
+function reroll(){
+  if(busy) return;
+  const path = getPath(session);
+  const last = path[path.length - 1];
+  if(!last || last.role !== "assistant" || last.p === null) return;
+  // leafは動かさない。親を指定して兄弟として生成し、成功時だけ切り替わる。
+  generate(last.p);
+}
+
+const CONTINUE_PROMPT = "(相手の反応を待たず、そのまま物語の続きを書いて。ユーザーのセリフや行動は書かないこと。)";
+async function autoAdvance(){
+  if(busy) return;
+  const path = getPath(session);
+  const last = path[path.length - 1];
+  if(last && last.role === "user"){
+    // 返信のないuserが末端 = 生成失敗の残骸。新ノードは作らず再送だけする。
+    generate(last.id);
+    return;
+  }
+  // 失敗時に元へ戻せるよう、現状を控えておく
+  const prevLeaf = session.leaf;
+  const parent = session.nodes[prevLeaf];
+  const prevLc = parent ? parent.lc : null;
+
+  const hidden = addNode(session, prevLeaf, "user", CONTINUE_PROMPT);
+  hidden.h = 1; // 隠しノードフラグ(表示・メッセージ編集の対象外)
+  saveSession();
+  renderLog();
+
+  const ok = await generate(hidden.id);
+  if(!ok){
+    // 隠しノードは画面に出ず「送り直す」も出せないため、失敗時は生成前の状態に巻き戻す
+    delete session.nodes[hidden.id];
+    if(session.nodes[prevLeaf]) session.nodes[prevLeaf].lc = prevLc;
+    session.leaf = prevLeaf;
+    saveSession();
+    renderLog();
+  }
+}
+
+/* ---- メッセージ編集 ---- */
+let editingMsgId = null;
+function openMsgEditor(id){
+  if(busy) return;
+  editingMsgId = id;
+  $("msg-edit-text").value = session.nodes[id].content;
+  openModal("modal-msgedit");
+}
+$("btn-msg-save").addEventListener("click", () => {
+  const t = $("msg-edit-text").value.trim();
+  if(!t || editingMsgId === null) return;
+  session.nodes[editingMsgId].content = t;   // 誤字修正など、その場での上書き
+  saveSession();
+  closeModal("modal-msgedit");
+  renderLog();
+});
+$("btn-msg-regen").addEventListener("click", () => {
+  const t = $("msg-edit-text").value.trim();
+  if(!t || editingMsgId === null) return;
+  const orig = session.nodes[editingMsgId];
+  addNode(session, orig.p, orig.role, t);    // 兄弟として新しい枝を作る(元の枝は残る)
+  saveSession();
+  closeModal("modal-msgedit");
+  renderLog();
+  generate();
+});
+$("btn-send").addEventListener("click", send);
+
+/* ---- ＊挿入ボタン(pointerdownで完結させる。touchstart+clickの組合せはiOS Safariでclickが握り潰される) ---- */
+function insertAsterisk(){
+  const el = $("chat-input");
+  const s = el.selectionStart, e = el.selectionEnd;
+  if (s !== e) {
+    el.setRangeText("*" + el.value.slice(s, e) + "*", s, e, "end");
+  } else {
+    el.setRangeText("*", s, e, "end");
+  }
+  el.focus();
+  el.dispatchEvent(new Event("input")); // 高さ自動調整を発火
+}
+$("btn-continue").addEventListener("click", autoAdvance);
+$("btn-ast").addEventListener("pointerdown", (e) => {
+  e.preventDefault(); // フォーカス移動によるキーボード閉じを防ぐ(同時にclick等の合成イベントも抑制される)
+  insertAsterisk();
+});
+
+/* ---- 最新へスクロール ----
+   #chat-log自身がoverflowでスクロールする場合と、ページ全体(html/body)がスクロールする場合の
+   両方があり得るため、documentへのcapture登録で両方のscrollイベントを拾い、
+   どちらの指標でも「下端から離れている」と判定できた方を採用する。 */
+function updateJumpLatestVisibility(){
+  const log = $("chat-log");
+  const jb = $("btn-jump-latest");
+  const logGap = log.scrollHeight - log.scrollTop - log.clientHeight;
+  const docEl = document.documentElement;
+  const docGap = docEl.scrollHeight - (window.scrollY + window.innerHeight);
+  const gap = Math.max(logGap, docGap);
+  jb.style.display = gap > 120 ? "flex" : "none";
+}
+document.addEventListener("scroll", updateJumpLatestVisibility, true);
+$("btn-jump-latest").addEventListener("click", () => {
+  scrollLogToBottom(true);
+  $("btn-jump-latest").style.display = "none";
+});
+
+$("chat-input").addEventListener("keydown", (e) => {
+  if(e.key === "Enter" && (e.metaKey || e.ctrlKey)){ e.preventDefault(); send(); }
+});
+$("chat-input").addEventListener("input", (e) => {
+  e.target.style.height = "auto";
+  e.target.style.height = Math.min(e.target.scrollHeight, 140) + "px";
+});
+$("btn-reset").addEventListener("click", () => {
+  if(!confirm("この舞台を最初からやり直す?(履歴は消える)")) return;
+  store.del(sessionKey(current.charId, current.sitId));
+  startChat(current.charId, current.sitId);
+});
+$("btn-memory").addEventListener("click", () => {
+  $("memory-text").value = (session && session.memory) || "";
+  openModal("modal-memory");
+});
+$("btn-memory-save").addEventListener("click", () => {
+  if(!session) return;
+  session.memory = $("memory-text").value.trim();
+  saveSession();
+  closeModal("modal-memory");
+});
+
+/* ========== settings & persona ========== */
+$("btn-settings").addEventListener("click", () => {
+  $("set-key").value = settings.apiKey;
+  $("set-model").value = settings.model;
+  $("set-max").value = settings.maxTokens;
+  $("set-temp").value = settings.temperature;
+  $("set-endpoint").value = settings.endpoint || DEFAULT_ENDPOINT;
+  $("set-context").value = settings.contextWindow || 30;
+  $("set-export-key").checked = false;
+  $("import-status").style.display = "none";
+  openModal("modal-settings");
+});
+$("btn-save-settings").addEventListener("click", () => {
+  settings = {
+    apiKey: $("set-key").value.trim(),
+    model: $("set-model").value.trim(),
+    maxTokens: Number($("set-max").value) || 1024,
+    temperature: Math.min(2, Math.max(0, Number($("set-temp").value) || 0.9)),
+    endpoint: $("set-endpoint").value.trim() || DEFAULT_ENDPOINT,
+    contextWindow: Math.max(4, Number($("set-context").value) || 30)
+  };
+  store.set("maku_settings", settings);
+  noSystemMode = false;            // モデル/接続先が変わったら判定し直す
+  store.set("maku_nosys", false);
+  closeModal("modal-settings");
+});
+
+/* ========== export / import ========== */
+function collectAllData(includeApiKey){
+  const out = {};
+  for(let i = 0; i < localStorage.length; i++){
+    const k = localStorage.key(i);
+    if(!k || !k.startsWith("maku_")) continue;
+    let v;
+    try{ v = JSON.parse(localStorage.getItem(k)); }
+    catch(e){ continue; }
+    out[k] = v;
+  }
+  if(!includeApiKey && out.maku_settings && typeof out.maku_settings === "object"){
+    out.maku_settings = { ...out.maku_settings, apiKey: "" };
+  }
+  return out;
+}
+function pad2(n){ return String(n).padStart(2, "0"); }
+function downloadBlobFallback(json, fname){
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+$("btn-export").addEventListener("click", async () => {
+  const includeKey = $("set-export-key").checked;
+  const data = collectAllData(includeKey);
+  const payload = { app: "maku", version: 1, exportedAt: new Date().toISOString(), data };
+  const json = JSON.stringify(payload, null, 2);
+  const d = new Date();
+  const fname = `maku_backup_${d.getFullYear()}${pad2(d.getMonth()+1)}${pad2(d.getDate())}.json`;
+
+  const file = new File([json], fname, { type: "application/json" });
+  if(navigator.canShare && navigator.canShare({ files: [file] })){
+    try{
+      await navigator.share({ files: [file] });
+      return; // 共有シートで保存完了(orユーザーが保存先を選んだ)
+    }catch(e){
+      if(e.name === "AbortError") return; // キャンセルはそのまま何もしない
+      // それ以外の失敗はフォールバックへ
+    }
+  }
+  downloadBlobFallback(json, fname);
+});
+
+$("btn-import").addEventListener("click", () => $("import-file").click());
+$("import-file").addEventListener("change", (e) => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let payload;
+    try{ payload = JSON.parse(reader.result); }
+    catch(err){ showImportStatus("ファイルの読み込みに失敗した(JSONとして壊れてるかも)。"); return; }
+    const data = payload && payload.data && typeof payload.data === "object" ? payload.data : null;
+    if(!data){ showImportStatus("バックアップファイルの形式が違うみたい。"); return; }
+
+    const charCount = Array.isArray(data.maku_chars) ? data.maku_chars.length : 0;
+    const sessionCount = Object.keys(data).filter(k => k.startsWith("maku_session_")).length;
+    const exportedAt = payload.exportedAt ? new Date(payload.exportedAt).toLocaleString("ja-JP") : "不明";
+    const msg = `このバックアップには キャラクター${charCount}件 / セッション${sessionCount}件 が含まれてる(作成: ${exportedAt})。\n\n今のデータは全部これで置き換わる。よければOKを。`;
+    if(!confirm(msg)) return;
+
+    // 既存のAPIキーは、バックアップに含まれてなければ引き継ぐ(鍵なしバックアップで死なないように)
+    const keepApiKey = settings.apiKey;
+    if(data.maku_settings && typeof data.maku_settings === "object" && !data.maku_settings.apiKey){
+      data.maku_settings = { ...data.maku_settings, apiKey: keepApiKey };
+    }
+
+    // 現行のmaku_*キーを全消去してから復元
+    const toRemove = [];
+    for(let i = 0; i < localStorage.length; i++){
+      const k = localStorage.key(i);
+      if(k && k.startsWith("maku_")) toRemove.push(k);
+    }
+    toRemove.forEach(k => store.del(k));
+    Object.keys(data).forEach(k => store.set(k, data[k]));
+
+    // 状態を再読込
+    settings = store.get("maku_settings", { apiKey:"", model:"", maxTokens:1024, temperature:0.9, endpoint: DEFAULT_ENDPOINT, contextWindow:30 });
+    if(!settings.endpoint) settings.endpoint = DEFAULT_ENDPOINT;
+    if(!settings.contextWindow) settings.contextWindow = 30;
+    personaData = store.get("maku_personas", { list: [], activeId: null });
+    chars = store.get("maku_chars", []);
+    noSystemMode = store.get("maku_nosys", false);
+
+    showImportStatus(`復元完了: キャラクター${charCount}件 / セッション${sessionCount}件`);
+    closeModal("modal-settings");
+    renderHome();
+  };
+  reader.readAsText(f);
+});
+function showImportStatus(text){
+  const el = $("import-status");
+  el.textContent = text;
+  el.style.display = "block";
+}
+let editingPer = null;
+function renderPersonaList(){
+  const box = $("per-list");
+  box.innerHTML = "";
+  if(personaData.list.length === 0){
+    box.innerHTML = `<div class="hint" style="margin-bottom:8px">まだペルソナがない。追加すると切り替えて使える。</div>`;
+  }
+  personaData.list.forEach(p => {
+    const on = p.id === personaData.activeId;
+    const b = document.createElement("button");
+    b.className = "per-card" + (on ? " on" : "");
+    b.innerHTML = `<span class="check">${on ? "✓" : ""}</span>
+      <div style="min-width:0"><div class="pn"></div><div class="pd"></div></div>
+      <span class="pe" data-pe="${p.id}">編集</span>`;
+    b.querySelector(".pn").textContent = p.name || "(名無し)";
+    b.querySelector(".pd").textContent = p.desc || "";
+    b.addEventListener("click", (e) => {
+      if(e.target.dataset.pe){ openPersonaEditor(p.id); return; }
+      personaData.activeId = on ? null : p.id;   // 再タップで解除
+      store.set("maku_personas", personaData);
+      renderPersonaList();
+    });
+    box.appendChild(b);
+  });
+}
+function renderPerAvatarPreview(){
+  $("per-avatar-preview").innerHTML = editingPer && editingPer.icon
+    ? `<img src="${editingPer.icon}" alt="">`
+    : (editingPer && editingPer.name ? editingPer.name[0] : "？");
+}
+function openPersonaEditor(id){
+  if(id){
+    editingPer = JSON.parse(JSON.stringify(personaData.list.find(p => p.id === id)));
+    $("btn-del-per").style.display = "block";
+  }else{
+    editingPer = { id: uid(), name:"", desc:"", icon:"" };
+    $("btn-del-per").style.display = "none";
+  }
+  $("per-name").value = editingPer.name;
+  $("per-desc").value = editingPer.desc;
+  renderPerAvatarPreview();
+  $("per-edit").style.display = "block";
+  $("per-name").focus();
+}
+$("btn-pick-per-icon").addEventListener("click", () => $("per-icon-file").click());
+$("per-icon-file").addEventListener("change", (e) => {
+  const f = e.target.files[0];
+  if(!f || !editingPer) return;
+  fileToIcon(f, (url) => { editingPer.icon = url; renderPerAvatarPreview(); });
+  e.target.value = "";
+});
+function closePersonaEditor(){
+  editingPer = null;
+  $("per-edit").style.display = "none";
+}
+$("btn-persona").addEventListener("click", () => {
+  closePersonaEditor();
+  renderPersonaList();
+  openModal("modal-persona");
+});
+$("btn-add-per").addEventListener("click", () => openPersonaEditor(null));
+$("per-name").addEventListener("input", (e) => {
+  if(editingPer){ editingPer.name = e.target.value; renderPerAvatarPreview(); }
+});
+$("btn-save-persona").addEventListener("click", () => {
+  if(!editingPer) return;
+  editingPer.name = $("per-name").value.trim();
+  editingPer.desc = $("per-desc").value.trim();
+  if(!editingPer.name && !editingPer.desc){ alert("名前か説明、どっちかは入れてね。"); return; }
+  const idx = personaData.list.findIndex(p => p.id === editingPer.id);
+  if(idx >= 0) personaData.list[idx] = editingPer;
+  else {
+    personaData.list.push(editingPer);
+    if(!personaData.activeId) personaData.activeId = editingPer.id; // 最初の1人は自動で有効化
+  }
+  store.set("maku_personas", personaData);
+  closePersonaEditor();
+  renderPersonaList();
+});
+$("btn-del-per").addEventListener("click", () => {
+  if(!editingPer) return;
+  if(!confirm(`ペルソナ「${editingPer.name || "(名無し)"}」を削除する?`)) return;
+  personaData.list = personaData.list.filter(p => p.id !== editingPer.id);
+  if(personaData.activeId === editingPer.id) personaData.activeId = null;
+  store.set("maku_personas", personaData);
+  closePersonaEditor();
+  renderPersonaList();
+});
+
+/* ========== init ========== */
+renderHome();
+</script>
+</body>
+</html>
