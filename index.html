@@ -7,6 +7,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="幕">
+<meta name="theme-color" content="#F7F6F2">
+<link rel="apple-touch-icon" href="./icon-180.png">
+<link rel="manifest" href="./manifest.json">
 <title>幕 -maku-</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@400;600&display=swap" rel="stylesheet">
@@ -2346,6 +2349,14 @@ $("btn-del-per").addEventListener("click", () => {
 applyDisplay();
 updateModelSwitchBtn();
 renderHome();
+</script>
+<script>
+// PWA: Service Worker登録(Stage 1)。失敗しても本体の動作には影響しない
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
 </script>
 </body>
 </html>
