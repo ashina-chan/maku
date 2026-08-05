@@ -122,6 +122,15 @@ label{display:block;font-size:12px;color:var(--gray);margin:var(--sp-4) 0 var(--
 .sit-block .sit-head{display:flex;align-items:center;justify-content:space-between}
 .sit-block .sit-head strong{font-size:13px;color:var(--gray);letter-spacing:.05em}
 .sit-del{color:var(--danger);font-size:12px;padding:var(--sp-1) var(--sp-2)}
+.genre-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.genre-chip{
+  display:inline-block;
+  background:var(--white);color:var(--gray);border:1px solid var(--line);border-radius:20px;
+  padding:4px 12px;font-size:12px;cursor:pointer;
+  transition:background-color .2s,color .2s,border-color .2s;
+}
+.genre-chip.on{background:var(--ai);color:#fff;border-color:var(--ai)}
+.genre-chip:disabled{opacity:.35;cursor:default}
 .cast-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
 .cast-chip{
   display:inline-flex;align-items:center;gap:4px;
@@ -762,7 +771,8 @@ function openCharEditor(id){
   renderSitEditors();
   openModal("modal-char");
 }
-function blankSit(){ return { id: uid(), title:"", scenario:"", first:"", cast:[] }; }
+const GENRE_LIST = ["恋愛","日常","コメディ","ホラー","サスペンス","ミステリー","ファンタジー","SF","アクション","ダーク","時代劇"];
+function blankSit(){ return { id: uid(), title:"", scenario:"", first:"", cast:[], genres:[], proseStyle:"" }; }
 // 共演者(参照)を実体の配列で返す。削除済みキャラは黙って除外(モブ降格)。
 function castChars(s){
   if(!s || !s.cast || !s.cast.length) return [];
@@ -793,12 +803,38 @@ function renderSitEditors(){
       <label>タイトル</label><input class="s-title" placeholder="雨の日のオフィス">
       <label>状況設定(舞台・関係性・導入)</label><textarea class="s-scn" rows="3"></textarea>
       <label>最初のメッセージ(キャラの第一声)</label><textarea class="s-first" rows="3"></textarea>
+      <label>ジャンル(2つまで)</label>
+      <div class="genre-chips"></div>
+      <label>地の文のスタイル</label>
+      <textarea class="s-prose" rows="2" placeholder="例: 現代小説のように自然な文体で、情景描写多め / ラノベ風にテンポよく"></textarea>
       <label>共演者</label>
       <div class="cast-chips"></div>
       <select class="cast-add"><option value="">＋ 共演者を追加</option></select>`;
     div.querySelector(".s-title").value = s.title;
     div.querySelector(".s-scn").value = s.scenario;
     div.querySelector(".s-first").value = s.first;
+    if(!s.genres) s.genres = [];
+    if(!s.proseStyle) s.proseStyle = "";
+    div.querySelector(".s-prose").value = s.proseStyle;
+    div.querySelector(".s-prose").addEventListener("input", e => s.proseStyle = e.target.value);
+    const genreBox = div.querySelector(".genre-chips");
+    const renderGenreChips = () => {
+      genreBox.innerHTML = "";
+      GENRE_LIST.forEach(g => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "genre-chip" + (s.genres.includes(g) ? " on" : "");
+        btn.textContent = g;
+        if(!s.genres.includes(g) && s.genres.length >= 2) btn.disabled = true;
+        btn.addEventListener("click", () => {
+          if(s.genres.includes(g)) s.genres = s.genres.filter(x => x !== g);
+          else if(s.genres.length < 2) s.genres.push(g);
+          renderGenreChips();
+        });
+        genreBox.appendChild(btn);
+      });
+    };
+    renderGenreChips();
     div.querySelector(".s-title").addEventListener("input", e => s.title = e.target.value);
     div.querySelector(".s-scn").addEventListener("input", e => s.scenario = e.target.value);
     div.querySelector(".s-first").addEventListener("input", e => s.first = e.target.value);
@@ -1059,6 +1095,7 @@ function buildSystem(){
     parts.push(`あなたはロールプレイの相手役「${ch.name}」を演じる。以下の設定を厳守する。`);
     parts.push(`# キャラクター設定\n${ch.prompt}`);
   }
+  if(s.genres && s.genres.length) parts.push(`# ジャンル\n${s.genres.join("・")}`);
   if(s.scenario) parts.push(`# 現在の状況\n${s.scenario}`);
   if(session && session.memory && session.memory.trim()){
     parts.push(`# これまでの経緯(記憶)\n${session.memory.trim()}`);
@@ -1067,9 +1104,11 @@ function buildSystem(){
   if(per && (per.name || per.desc)){
     parts.push(`# 相手(ユーザー)の情報\n名前: ${per.name || "(未設定)"}\n${per.desc || ""}`.trim());
   }
+  const proseNote = s.proseStyle && s.proseStyle.trim()
+    ? `\n- 地の文のスタイル: ${s.proseStyle.trim()}` : "";
   parts.push(
 `# 文体ルール
-- セリフは「」で囲む。地の文(描写・動作・情景)は「」の外に書く。
+- セリフは「」で囲む。地の文(描写・動作・情景)は「」の外に書く。${proseNote}
 - セリフの「」は必ず独立した行に書く。地の文の中に埋め込まない。
 - 地の文の中で引用・回想・看板の文字などを書くときは「」ではなく『』を使う。
 - セリフと地の文はおおよそ半々のバランス。
