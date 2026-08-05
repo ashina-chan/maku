@@ -1095,17 +1095,28 @@ function renderThreadList(){
     const sess = store.get(sessionKey(current.charId, current.sitId, entry.id), null);
     const preview = getThreadPreview(sess);
     const date = new Date(entry.createdAt).toLocaleDateString("ja-JP",{year:"numeric",month:"short",day:"numeric"});
+    const title = entry.title || "";
     const btn = document.createElement("button");
     btn.className = "thread-card";
-    btn.innerHTML = `<div class="body"><div class="t"></div><div class="d"></div></div><span class="del" data-del="${entry.id}">削除</span>`;
-    btn.querySelector(".t").textContent = date;
-    btn.querySelector(".d").textContent = preview || "(まだ発言なし)";
+    btn.innerHTML = `<div class="body"><div class="t"></div><div class="d"></div></div><span class="rename" data-ren="${entry.id}" style="color:var(--ai);font-size:12px;padding:4px 6px;flex-shrink:0">名前</span><span class="del" data-del="${entry.id}">削除</span>`;
+    btn.querySelector(".t").textContent = title || date;
+    btn.querySelector(".d").textContent = title ? date + " — " + (preview || "(まだ発言なし)") : (preview || "(まだ発言なし)");
     btn.addEventListener("click", (e) => {
       if(e.target.dataset.del){
         if(!confirm("この舞台を削除する?(戻せない)")) return;
         const newList = getSessionList(current.charId, current.sitId).filter(x => x.id !== entry.id);
         saveSessionList(current.charId, current.sitId, newList);
         store.del(sessionKey(current.charId, current.sitId, entry.id));
+        renderThreadList();
+        return;
+      }
+      if(e.target.dataset.ren){
+        const name = prompt("この舞台に名前をつける", entry.title || "");
+        if(name === null) return;
+        const cur = getSessionList(current.charId, current.sitId);
+        const target = cur.find(x => x.id === entry.id);
+        if(target) target.title = name.trim();
+        saveSessionList(current.charId, current.sitId, cur);
         renderThreadList();
         return;
       }
