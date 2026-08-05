@@ -742,6 +742,7 @@ function show(name){
 document.querySelectorAll("[data-back]").forEach(b => {
   b.addEventListener("click", () => {
     const t = b.dataset.back;
+    if(t === "threads" || t === "sit" || t === "home") abortGeneration();
     if(t === "home") renderHome();
     if(t === "sit")  openSitPicker(current.charId);
     if(t === "threads") openThreadPicker(current.charId, current.sitId);
@@ -758,8 +759,11 @@ document.querySelectorAll(".modal").forEach(m => {
 });
 
 /* ========== home ========== */
+const SAFE_ICON_RE = /^data:image\/(jpeg|png|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+function safeIcon(url){ return url && SAFE_ICON_RE.test(url) ? url : ""; }
 function avatarHTML(ch, cls){
-  const inner = ch.icon ? `<img src="${ch.icon}" alt="">` : (ch.name ? ch.name[0] : "？");
+  const icon = safeIcon(ch.icon);
+  const inner = icon ? `<img src="${icon}" alt="">` : (ch.name ? ch.name[0] : "？");
   return `<div class="avatar ${cls||""}">${inner}</div>`;
 }
 function renderHome(){
@@ -950,7 +954,22 @@ $("icon-file").addEventListener("change", (e) => {
 $("btn-save-char").addEventListener("click", () => {
   if(!editing.name.trim()){ alert("名前を入れてね。"); return; }
   const idx = chars.findIndex(c => c.id === editing.id);
-  if(idx >= 0) chars[idx] = editing; else chars.push(editing);
+  if(idx >= 0){
+    // 削除されたシチュエーションの孤児セッションを清掃
+    const oldSits = chars[idx].situations || [];
+    const newSitIds = new Set(editing.situations.map(s => s.id));
+    oldSits.forEach(s => {
+      if(!newSitIds.has(s.id)){
+        const list = getSessionList(editing.id, s.id);
+        list.forEach(e => store.del(sessionKey(editing.id, s.id, e.id)));
+        store.del(sesListKey(editing.id, s.id));
+        store.del(`maku_session_${editing.id}_${s.id}`);
+      }
+    });
+    chars[idx] = editing;
+  } else {
+    chars.push(editing);
+  }
   store.set("maku_chars", chars);
   closeModal("modal-char");
   renderHome();
@@ -1216,7 +1235,17 @@ function startChat(charId, sitId, sessionId, noCurtain){
 $("chat-log").addEventListener("animationend", (e) => {
   if(e.animationName === "msg-ink") e.target.classList.remove("ink-rise");
 });
-function saveSession(){ store.set(sessionKey(current.charId, current.sitId, current.sessionId), session); }
+let unsaved = false;
+function saveSession(){
+  const ok = store.set(sessionKey(current.charId, current.sitId, current.sessionId), session, true);
+  if(!ok && !unsaved){
+    unsaved = true;
+    showError("保存に失敗した(容量超過)。データが消える前にエクスポートしてバックアップを取ってね。");
+    $("btn-send").disabled = true;
+    $("btn-continue").disabled = true;
+  }
+  if(ok) unsaved = false;
+}
 
 function buildSystem(){
   const ch = getChar(current.charId), s = getSit(ch, current.sitId);
@@ -1288,7 +1317,7 @@ function appendMarkdownLite(container, text){
 // テキストを「地の文」「セリフ」のブロック列に分割する(行ベース判定)。
 // セリフと判定するのは独立行の「…」、および 名前「…」(マルチキャラ用)のみ。
 // 地の文中に埋め込まれた「」は地の文のまま。
-const SEIFU_LINE_RE = /^「[\s\S]*」[。、…!?!?〜~\s　]*$/;
+const SEIFU_LINE_RE = /^「[^」]*」[。、…!?!?〜~\s　]*$/;
 const SEIFU_CLOSE_RE = /」[。、…!?!?〜~\s　]*$/;
 const SPEAKER_RE = /^([^「\n]{1,16})「/; // 話者名(「の直前まで、最大16字)
 // speakerMap: Map<話者名, キャラ> (主役+共演者)。渡さなければ従来動作(話者名判定なし)と完全一致。
@@ -1309,22 +1338,21 @@ function splitIntoBlocks(text, speakerMap){
     if(trimmed === ""){ narrBuf.push(line); i++; continue; }
 
     // 話者名+「 で始まる行(名前「…」)。話者なしの独立セリフより先に判定する。
-    // マルチキャラ舞台(主役+共演者が2人以上)のときだけ有効。単独舞台はv46と完全に同じ挙動。
+    // 一行完結の 名前「台詞」 は単独舞台でもモブとして判定する。
+    // 複数行にまたがるセリフは、既知の話者(マルチキャラ舞台)に限り許容(誤爆抑制)。
     const multiMode = speakerMap && speakerMap.size > 1;
-    const spMatch = multiMode ? trimmed.match(SPEAKER_RE) : null;
+    const spMatch = trimmed.match(SPEAKER_RE);
     if(spMatch){
       const speaker = spMatch[1].trim();
       const afterName = line.slice(line.indexOf("「"));
       const afterNameTrim = afterName.trim();
       if(SEIFU_LINE_RE.test(afterNameTrim)){
-        // その行だけで閉じている独立セリフ(話者は既知・未知どちらでも可=モブ対応)
         flushNarr();
         blocks.push({ type: "dlg", text: afterNameTrim, speaker });
         i++;
         continue;
       }
-      if(speakerMap && speakerMap.has(speaker)){
-        // 既知の話者に限り、複数行にまたがるセリフの可能性を許容(誤爆抑制)
+      if(multiMode && speakerMap && speakerMap.has(speaker)){
         const buf = [afterName];
         let j = i + 1, closed = false;
         while(j < lines.length){
@@ -1350,10 +1378,10 @@ function splitIntoBlocks(text, speakerMap){
         i++;
         continue;
       }
-      // 複数行にまたがるセリフの可能性 → 閉じの」が出るまで蓄積
+      // 複数行にまたがるセリフの可能性 → 閉じの」が出るまで蓄積(最大5行)
       const buf = [line];
       let j = i + 1, closed = false;
-      while(j < lines.length){
+      while(j < lines.length && j - i < 5){
         buf.push(lines[j]);
         if(SEIFU_CLOSE_RE.test(buf.join("\n").trim())){ closed = true; break; }
         j++;
@@ -1364,9 +1392,9 @@ function splitIntoBlocks(text, speakerMap){
         i = j + 1;
         continue;
       }
-      // 最後まで閉じなかった → 誤爆させず地の文として扱う
-      narrBuf.push(...buf);
-      i = j + 1;
+      // 閉じなかった → この行だけ地の文にして、後続行は再判定させる
+      narrBuf.push(line);
+      i++;
       continue;
     }
     narrBuf.push(line);
@@ -1506,7 +1534,7 @@ function renderLog(animateLast, wasNearBottom){
       };
       lines.forEach(line => {
         const trimmed = line.trim();
-        if(/^\*[^*]+\*$/.test(trimmed)){
+        if(/^(\*[^*]+\*\s*)+$/.test(trimmed)){
           flushBuf();
           segs.push({ type: "unarr", text: trimmed.slice(1, -1) });
         }else{
@@ -1683,7 +1711,8 @@ function buildMessagesPayload(useSystem, uptoId){
   return [{ role:"user", content: setupText }, ...msgs];
 }
 
-async function requestOnce(useSystem, uptoId){
+let activeAbort = null; // 通信中のAbortController
+async function requestOnce(useSystem, uptoId, signal){
   const mod = activeModel();
   const prov = activeProvider();
   if(!mod || !prov) throw new Error("モデルまたは接続先が設定されていない。設定画面を確認してね。");
@@ -1699,7 +1728,8 @@ async function requestOnce(useSystem, uptoId){
       "Content-Type": "application/json",
       "Authorization": "Bearer " + prov.apiKey
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal
   });
   const data = await res.json().catch(() => null);
   if(!res.ok){
@@ -1729,14 +1759,13 @@ function stripThought(text){
   return t || text.trim(); // 全部消えたら原文のまま返す(白紙よりマシ)
 }
 
-async function callAPI(uptoId){
-  if(noSystemMode) return await requestOnce(false, uptoId);
+async function callAPI(uptoId, signal){
+  if(noSystemMode) return await requestOnce(false, uptoId, signal);
   try{
-    return await requestOnce(true, uptoId);
+    return await requestOnce(true, uptoId, signal);
   }catch(err){
-    // systemロール拒否っぽい400ならフォールバックして再試行
     if(err.status === 400){
-      const content = await requestOnce(false, uptoId);
+      const content = await requestOnce(false, uptoId, signal);
       noSystemMode = true;
       store.set("maku_nosys", true);
       return content;
@@ -1745,10 +1774,10 @@ async function callAPI(uptoId){
   }
 }
 
+function abortGeneration(){
+  if(activeAbort){ activeAbort.abort(); activeAbort = null; }
+}
 async function generate(parentId){
-  // parentId: この親ノードの下に応答を生成する。省略時は現在のleaf。
-  // 成功したときだけ木に触る(エラー時はツリーもleafも一切変わらない)。
-  // 戻り値: 成功したらtrue、失敗(busy中の無視含む)ならfalse。
   if(busy) return false;
   if(!activeModel() || !activeProvider() || !activeProvider().apiKey){
     showError("先に設定で接続先とモデルを登録してね。");
@@ -1756,6 +1785,16 @@ async function generate(parentId){
     return false;
   }
   const target = (parentId !== undefined) ? parentId : session.leaf;
+  // 生成開始時のコンテキストを固定(通信中に画面遷移しても安全)
+  const ctx = {
+    session,
+    charId: current.charId,
+    sitId: current.sitId,
+    sessionId: current.sessionId,
+    target
+  };
+  const ac = new AbortController();
+  activeAbort = ac;
   busy = true;
   $("btn-send").disabled = true;
   $("btn-continue").disabled = true;
@@ -1766,17 +1805,24 @@ async function generate(parentId){
   log.appendChild(t);
   if(wasNearAtStart) scrollLogToBottom(false);
   try{
-    const reply = await callAPI(target);
-    const wasNear = isNearBottom(); // 応答到着時点でのスクロール位置を見て、追従するか通知に留めるか決める
-    addNode(session, target, "assistant", reply);
-    saveSession();
-    renderLog(true, wasNear);
+    const reply = await callAPI(ctx.target, ac.signal);
+    // 固定したセッションへ保存(画面遷移済みでも正しいセッションに入る)
+    addNode(ctx.session, ctx.target, "assistant", reply);
+    store.set(sessionKey(ctx.charId, ctx.sitId, ctx.sessionId), ctx.session);
+    // 今もそのセッションを見ているなら画面を更新
+    if(current.sessionId === ctx.sessionId){
+      session = ctx.session;
+      const wasNear = isNearBottom();
+      renderLog(true, wasNear);
+    }
     return true;
   }catch(err){
+    if(err.name === "AbortError") return false;
     t.remove();
     showError("エラー: " + err.message);
     return false;
   }finally{
+    if(activeAbort === ac) activeAbort = null;
     busy = false;
     $("btn-send").disabled = false;
     $("btn-continue").disabled = false;
@@ -1786,7 +1832,7 @@ async function generate(parentId){
 function send(){
   const input = $("chat-input");
   const text = input.value.trim();
-  if(!text || busy) return;
+  if(!text || busy || unsaved) return;
   const path = getPath(session);
   const last = path[path.length - 1];
   // 直前が返信のないuserノード(=生成失敗の残骸)なら、子ではなく兄弟として生やす。
@@ -1810,7 +1856,7 @@ function reroll(){
 
 const CONTINUE_PROMPT = "(相手の反応を待たず、そのまま物語の続きを書いて。ユーザーのセリフや行動は書かないこと。)";
 async function autoAdvance(){
-  if(busy) return;
+  if(busy || unsaved) return;
   const path = getPath(session);
   const last = path[path.length - 1];
   if(last && last.role === "user"){
@@ -1831,11 +1877,15 @@ async function autoAdvance(){
   const ok = await generate(hidden.id);
   if(!ok){
     // 隠しノードは画面に出ず「送り直す」も出せないため、失敗時は生成前の状態に巻き戻す
+    // エラーメッセージをrenderLogで消さないよう、先に巻き戻してから再表示
+    const errEls = Array.from($("chat-log").querySelectorAll(".errmsg"));
+    const errTexts = errEls.map(el => el.textContent);
     delete session.nodes[hidden.id];
     if(session.nodes[prevLeaf]) session.nodes[prevLeaf].lc = prevLc;
     session.leaf = prevLeaf;
     saveSession();
     renderLog();
+    errTexts.forEach(t => showError(t));
   }
 }
 
@@ -2383,38 +2433,45 @@ $("import-file").addEventListener("change", (e) => {
     let payload;
     try{ payload = JSON.parse(reader.result); }
     catch(err){ showImportStatus("ファイルの読み込みに失敗した(JSONとして壊れてるかも)。"); return; }
-    const data = payload && payload.data && typeof payload.data === "object" ? payload.data : null;
+    if(!payload || payload.app !== "maku"){
+      showImportStatus("幕のバックアップファイルではないみたい。"); return;
+    }
+    const data = payload.data && typeof payload.data === "object" ? payload.data : null;
     if(!data){ showImportStatus("バックアップファイルの形式が違うみたい。"); return; }
 
-    const charCount = Array.isArray(data.maku_chars) ? data.maku_chars.length : 0;
-    const sessionCount = Object.keys(data).filter(k => k.startsWith("maku_session_")).length;
+    // maku_ プレフィックスのキーだけ受け入れる
+    const ALLOWED_PREFIXES = ["maku_settings","maku_chars","maku_personas","maku_session_","maku_seslist_","maku_display","maku_nosys","maku_backup_"];
+    const safeData = {};
+    Object.keys(data).forEach(k => {
+      if(ALLOWED_PREFIXES.some(p => k === p || k.startsWith(p))) safeData[k] = data[k];
+    });
+
+    const charCount = Array.isArray(safeData.maku_chars) ? safeData.maku_chars.length : 0;
+    const sessionCount = Object.keys(safeData).filter(k => k.startsWith("maku_session_")).length;
     const exportedAt = payload.exportedAt ? new Date(payload.exportedAt).toLocaleString("ja-JP") : "不明";
     const msg = `このバックアップには キャラクター${charCount}件 / セッション${sessionCount}件 が含まれてる(作成: ${exportedAt})。\n\n今のデータは全部これで置き換わる。よければOKを。`;
     if(!confirm(msg)) return;
 
-    // 既存のAPIキーは、バックアップに含まれてなければ引き継ぐ(鍵なしバックアップで死なないように)
-    if(data.maku_settings && typeof data.maku_settings === "object"){
+    // 既存のAPIキーは、IDとエンドポイントが両方一致した場合のみ引き継ぐ
+    if(safeData.maku_settings && typeof safeData.maku_settings === "object"){
       const keepProviders = settings.providers || [];
-      if(Array.isArray(data.maku_settings.providers)){
-        data.maku_settings.providers = data.maku_settings.providers.map(p => {
+      if(Array.isArray(safeData.maku_settings.providers)){
+        safeData.maku_settings.providers = safeData.maku_settings.providers.map(p => {
           if(!p.apiKey){
-            const match = keepProviders.find(kp => kp.id === p.id || kp.label === p.label);
+            const match = keepProviders.find(kp => kp.id === p.id && kp.endpoint === p.endpoint);
             if(match) p.apiKey = match.apiKey;
           }
           return p;
         });
       }
       // 旧形式との互換
-      if(!data.maku_settings.apiKey && !Array.isArray(data.maku_settings.providers)){
+      if(!safeData.maku_settings.apiKey && !Array.isArray(safeData.maku_settings.providers)){
         const keepApiKey = settings.apiKey || "";
-        data.maku_settings.apiKey = keepApiKey;
+        safeData.maku_settings.apiKey = keepApiKey;
       }
     }
 
     // ---- トランザクション化 ----
-    // 消す前に現行のmaku_*を生文字列のままメモリに控える。
-    // 途中で容量超過したら、書きかけを消して控えから完全に巻き戻す
-    // (控えは直前までこの領域に収まっていたデータなので、戻す分には必ず入る)。
     const snapshot = {};
     const toRemove = [];
     for(let i = 0; i < localStorage.length; i++){
@@ -2425,7 +2482,7 @@ $("import-file").addEventListener("change", (e) => {
       }
     }
     toRemove.forEach(k => store.del(k));
-    const failedKey = Object.keys(data).find(k => !store.set(k, data[k], true));
+    const failedKey = Object.keys(safeData).find(k => !store.set(k, safeData[k], true));
     if(failedKey){
       // 巻き戻し: 書きかけを全消去→控えを生文字列のまま戻す
       for(let i = localStorage.length - 1; i >= 0; i--){
@@ -2452,9 +2509,9 @@ $("import-file").addEventListener("change", (e) => {
     applyDisplay();
     updateModelSwitchBtn();
 
-    showImportStatus(`復元完了: キャラクター${charCount}件 / セッション${sessionCount}件`);
     closeModal("modal-settings");
     renderHome();
+    alert(`復元完了: キャラクター${charCount}件 / セッション${sessionCount}件`);
   };
   reader.readAsText(f);
 });
