@@ -2000,6 +2000,23 @@ $("btn-jump-latest").addEventListener("click", () => {
   $("btn-jump-latest").style.display = "none";
 });
 
+/* ---- キーボード表示時のスクロール位置補正 ----
+   モバイルで入力欄をタップ→キーボードが出ると dvh が縮み、
+   chat-log の高さが変わって表示中の会話が飛ぶ。
+   visualViewport の resize を監視して、縮んだ分だけ scrollTop を補正する。 */
+if(window.visualViewport){
+  let prevVVH = window.visualViewport.height;
+  window.visualViewport.addEventListener("resize", () => {
+    if(!$("view-chat").classList.contains("active")) return;
+    const newH = window.visualViewport.height;
+    const delta = prevVVH - newH;
+    prevVVH = newH;
+    if(delta > 0){
+      $("chat-log").scrollTop += delta;
+    }
+  });
+}
+
 $("chat-input").addEventListener("keydown", (e) => {
   if(e.key === "Enter" && (e.metaKey || e.ctrlKey)){ e.preventDefault(); send(); }
 });
