@@ -462,6 +462,8 @@ label{display:block;font-size:12px;color:var(--gray);margin:var(--sp-4) 0 var(--
     <div class="hint">このキャラのセリフ吹き出しの色。「標準に戻す」でテーマの色に従う。</div>
     <label>人格プロンプト</label>
     <textarea id="edit-prompt" rows="8" placeholder="行動骨格・情報処理パターンなど。ここがそのままsystemに入る。"></textarea>
+    <label>口調（セリフの見本）</label>
+    <textarea id="edit-tone" rows="4" placeholder="そのキャラが実際に言いそうなセリフを数行書いておくと、モデルがこの口調を真似して喋る。感情ごとに分けて書くとより正確に。"></textarea>
     <label>世界観</label>
     <textarea id="edit-worldview" rows="5" placeholder="時代背景・舞台のルール・空気感など"></textarea>
     <label>シチュエーション</label>
@@ -1078,13 +1080,14 @@ function openCharEditor(id){
     $("char-modal-title").textContent = "キャラクター編集";
     $("btn-del-char").style.display = "block";
   }else{
-    editing = { id: uid(), name:"", icon:"", color:"", prompt:"", worldview:"", situations:[ blankSit() ] };
+    editing = { id: uid(), name:"", icon:"", color:"", prompt:"", tone:"", worldview:"", situations:[ blankSit() ] };
     $("char-modal-title").textContent = "キャラクター追加";
     $("btn-del-char").style.display = "none";
   }
   $("edit-name").value = editing.name;
   $("edit-color").value = editing.color || effectiveBubbleAi();
   $("edit-prompt").value = editing.prompt;
+  $("edit-tone").value = editing.tone || "";
   $("edit-worldview").value = editing.worldview || "";
   renderAvatarPreview();
   renderSitEditors();
@@ -1205,6 +1208,7 @@ $("btn-color-default").addEventListener("click", () => {
   $("edit-color").value = effectiveBubbleAi();
 });
 $("edit-prompt").addEventListener("input", e => { editing.prompt = e.target.value; });
+$("edit-tone").addEventListener("input", e => { editing.tone = e.target.value; });
 $("edit-worldview").addEventListener("input", e => { editing.worldview = e.target.value; });
 
 $("btn-pick-icon").addEventListener("click", () => $("icon-file").click());
@@ -1565,10 +1569,15 @@ function buildSystem(){
   if(cast.length){
     parts.push(`あなたはロールプレイの相手役を演じる。主役は「${ch.name}」。以下の設定を厳守する。`);
     parts.push(`# キャラクター設定: ${ch.name}(主役)\n${ch.prompt}`);
-    cast.forEach(c => parts.push(`# キャラクター設定: ${c.name}\n${c.prompt}`));
+    if(ch.tone) parts.push(`# ${ch.name}の口調の見本\n以下はこのキャラの話し方の例。語彙・語尾・間の取り方を参考にして、一貫した口調で喋ること。\n${ch.tone}`);
+    cast.forEach(c => {
+      parts.push(`# キャラクター設定: ${c.name}\n${c.prompt}`);
+      if(c.tone) parts.push(`# ${c.name}の口調の見本\n以下は${c.name}の話し方の例。語彙・語尾・間の取り方を参考にして、一貫した口調で喋ること。\n${c.tone}`);
+    });
   }else{
     parts.push(`あなたはロールプレイの相手役「${ch.name}」を演じる。以下の設定を厳守する。`);
     parts.push(`# キャラクター設定\n${ch.prompt}`);
+    if(ch.tone) parts.push(`# 口調の見本\n以下はこのキャラの話し方の例。語彙・語尾・間の取り方を参考にして、一貫した口調で喋ること。\n${ch.tone}`);
   }
   if(ch.worldview) parts.push(`# 世界観\n${ch.worldview}`);
   if(s.genres && s.genres.length) parts.push(`# ジャンル\n${s.genres.join("・")}`);
