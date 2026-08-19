@@ -1520,7 +1520,7 @@ function startChat(charId, sitId, sessionId, noCurtain){
   else log.style.removeProperty("--bubble-ai");
   session = loadSession(charId, sitId, sessionId) || emptySession();
   if(Object.keys(session.nodes).length === 0 && s.first){
-    addNode(session, null, "assistant", s.first);
+    addNode(session, null, "assistant", applyTemplateVars(s.first, ch));
     saveSession();
   }
   resetLogWindow();
@@ -1560,6 +1560,15 @@ function persistSession(ctx, sess){
   if(ok) unsaved = false;
   else markSaveFailed("容量超過");
   return ok;
+}
+
+// {{user}} → アクティブなペルソナの名前(未設定なら「あなた」), {{chara}} → ch.name
+// 人格・世界観・状況設定・第一声など、キャラ作者が書く文章全般で使う想定。
+function applyTemplateVars(text, ch){
+  if(!text) return text;
+  const pn = activePersona();
+  const userName = pn && pn.name ? pn.name : "あなた";
+  return text.replaceAll("{{user}}", userName).replaceAll("{{chara}}", (ch && ch.name) || "");
 }
 
 function buildSystem(){
@@ -1607,7 +1616,7 @@ function buildSystem(){
 - 登場キャラクターが複数いるため、すべてのセリフは 名前「セリフ」 の形式で、行頭に必ず話者名を付ける。主役のセリフも例外ではない。
 - 各キャラクターの人格・口調を混同しない。発言の少ないキャラを無理に喋らせなくてよい。` : "")
   );
-  return parts.join("\n\n");
+  return applyTemplateVars(parts.join("\n\n"), ch);
 }
 
 // markdown-lite: **太字** と *斜体* のみ対応。innerHTMLは使わずノードを組み立てる。
