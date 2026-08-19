@@ -693,6 +693,7 @@ const CORRUPT = [];              // 読めなかったキー(上書き禁止リ�
 const MEM = new Map();           // key -> 生のJSON文字列
 const DB_NAME = "maku", DB_STORE = "kv", MIGRATED_KEY = "__maku_storage__";
 let idb = null;                  // IDBDatabase。null なら localStorage で動いている
+let idbIsHome = false;           // IndexedDBが本来の保存先だと確定しているか
 let storageBackend = "localStorage";
 
 /* ---- IndexedDB 低レベル ---- */
@@ -710,9 +711,19 @@ function openIDB(){
     req.onsuccess  = () => finish(req.result);
     req.onerror    = () => finish(null);
     req.onblocked  = () => finish(null);
-    // openが無反応のまま固まる事故(古いSafari等)に備えた保険
-    setTimeout(() => finish(null), 4000);
+    // openが無反応のまま固まる事故に備えた保険。
+    // クラッシュ直後などopenが遅れることがあるので短く切らない。
+    setTimeout(() => finish(null), 10000);
   });
+}
+// 何度か粘ってから諦める(クラッシュ直後は一度目が失敗しやすい)
+async function openIDBWithRetry(tries){
+  for(let i = 0; i < tries; i++){
+    const db = await openIDB();
+    if(db) return db;
+    if(i < tries - 1) await new Promise(r => setTimeout(r, 400));
+  }
+  return null;
 }
 function idbReadAll(){
   return new Promise((resolve, reject) => {
@@ -776,6 +787,8 @@ document.addEventListener("visibilitychange", () => {
 /* ---- 実際の保存先への書き込み ---- */
 function persist(k, value){      // value: 文字列 or null(削除)
   if(idb){ pending.set(k, value); scheduleFlush(); return true; }
+  // IDBが本来の保存先なのに書けない状態。localStorageへ逃がすと本物と食い違うので書かない。
+  if(idbIsHome) return false;
   try{
     if(value === null) localStorage.removeItem(k);
     else localStorage.setItem(k, value);
@@ -871,12 +884,18 @@ async function markMigrated(){
   await idbWriteAll([row]);
   MEM.set(row[0], row[1]);
 }
+// IndexedDBを使い始めた印は localStorage 側にも置く。
+// これがあるのにIDBが開けない時は「本物のデータはIDBにある」と判るので、
+// 古いlocalStorageの控えを表示して上書きさせる事故を防げる。
+function lsMarkerSet(){ try{ localStorage.setItem(MIGRATED_KEY, "1"); }catch(e){} }
+function lsMarkerHas(){ try{ return localStorage.getItem(MIGRATED_KEY) !== null; }catch(e){ return false; } }
+
 async function bootStore(){
   // 保存領域が自動削除されないよう申請しておく(できなくても続行)
   try{
     if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   }catch(e){}
-  idb = await openIDB();
+  idb = await openIDBWithRetry(3);
   if(idb){
     try{
       const rows = await idbReadAll();
@@ -889,12 +908,25 @@ async function bootStore(){
         if(hasData) await markMigrated();
         else await migrateFromLocalStorage();
       }
-      idb.onclose = () => { idb = null; storageBackend = "localStorage"; };
+      idbIsHome = true;
+      lsMarkerSet();
+      idb.onclose = () => {
+        // 接続が切れた。localStorageへ書き戻すと食い違うので、保存失敗として扱う。
+        idb = null;
+        storageBackend = "IndexedDB(接続切れ)";
+        persistFailed(new Error("IndexedDBの接続が切れた"));
+      };
       storageBackend = "IndexedDB";
       return;
     }catch(e){
-      idb = null;                                // 読み書きできない → localStorageで動かす
+      idb = null;                                // 読めなかった
     }
+  }
+  if(lsMarkerHas()){
+    // 一度IndexedDBに引っ越し済み = 本物のデータはIDB側にある。
+    // ここで古いlocalStorageの控えを見せると「全部消えた」ように見える上、
+    // その状態で書き込むと本物と食い違う。開けない事実をそのまま伝える。
+    throw new Error("IDB_UNAVAILABLE");
   }
   storageBackend = "localStorage";
   loadFromLocalStorage();
@@ -902,9 +934,32 @@ async function bootStore(){
 
 /* ここから下がアプリ本体。IndexedDBの読み込みを待つために startApp() で
    包んでいるだけで、中身のインデントは変えていない。 */
-bootStore().then(startApp, (err) => {
-  alert("保存データの読み込みに失敗した: " + ((err && err.message) || err));
-});
+// 保存データを開けなかった時は、空の画面を見せない。
+// 空の状態から書き込むと本物のデータを上書きしてしまうため、ここで止めて伝える。
+function showBootFailure(err){
+  const unavailable = err && err.message === "IDB_UNAVAILABLE";
+  const box = document.createElement("div");
+  box.setAttribute("role", "alert");
+  box.style.cssText = "position:fixed;inset:0;z-index:9999;background:#F7F6F2;color:#2B2A28;display:flex;align-items:center;justify-content:center;padding:24px;font-family:system-ui,sans-serif;line-height:1.8";
+  const inner = document.createElement("div");
+  inner.style.cssText = "max-width:420px";
+  const h = document.createElement("div");
+  h.style.cssText = "font-size:17px;margin-bottom:12px;letter-spacing:.08em";
+  h.textContent = "保存データを開けなかった";
+  const p = document.createElement("div");
+  p.style.cssText = "font-size:14px;color:#6B6862";
+  p.textContent = unavailable
+    ? "記録は消えていない。ブラウザが保存領域を一時的に開けない状態(アプリが落ちた直後などに起きる)。少し待ってから読み込み直すか、一度アプリを完全に閉じて開き直して。この画面のまま書き込むことはないので、記録が上書きされる心配はない。"
+    : "保存領域の読み込みに失敗した(" + ((err && err.message) || err) + ")。読み込み直してみて。";
+  const btn = document.createElement("button");
+  btn.textContent = "↻ 読み込み直す";
+  btn.style.cssText = "margin-top:20px;width:100%;padding:14px;border:1px solid #DEDAD2;border-radius:10px;background:#fff;font-size:15px;cursor:pointer";
+  btn.addEventListener("click", () => location.reload());
+  inner.appendChild(h); inner.appendChild(p); inner.appendChild(btn);
+  box.appendChild(inner);
+  document.body.appendChild(box);
+}
+bootStore().then(startApp, showBootFailure);
 
 function startApp(){
 
@@ -1464,9 +1519,12 @@ function startChat(charId, sitId, sessionId, noCurtain){
     addNode(session, null, "assistant", s.first);
     saveSession();
   }
+  resetLogWindow();
   renderLog();
   show("chat");
-  if(!noCurtain) curtainOpen();
+  // 描画とレイアウトが済んでから幕を開ける。
+  // 同じフレームで走らせると、重い舞台では開幕アニメがかくつく。
+  if(!noCurtain) requestAnimationFrame(() => requestAnimationFrame(curtainOpen));
   // 舞台入場時のみ、開幕の線が描かれる演出(以降の再描画では発火しない)
   const am = $("chat-log").querySelector(".act-mark");
   if(am) am.classList.add("draw");
@@ -1743,20 +1801,56 @@ function scrollLogToBottom(smooth){
   // スクロールが発生しなかった場合(短い枝への切替等)もボタン表示を再評価する
   updateJumpLatestVisibility();
 }
+/* ---- 表示ウィンドウ ----
+   発言が数百件になると、毎回ログ全体を作り直すのが重すぎて
+   画面が固まる(端末によってはページごと落とされる)。
+   そこで描画するのは直近 visibleLimit 件だけにして、
+   古い分は「これより前を読む」で必要なときだけ足す。 */
+const LOG_WINDOW = 40;
+let visibleLimit = LOG_WINDOW;
+function resetLogWindow(){ visibleLimit = LOG_WINDOW; }
+// 指定ノードが描画範囲に入るまでウィンドウを広げる(しおりジャンプ用)
+function revealNode(nodeId){
+  const full = getPath(session);
+  const idx = full.findIndex(n => n.id === nodeId);
+  if(idx < 0) return;
+  const needed = full.length - idx + 5;   // その発言以降 + 少し余裕
+  if(visibleLimit < needed) visibleLimit = Math.min(full.length, needed);
+}
+
 function renderLog(animateLast, wasNearBottom){
   // animateLast: 新規メッセージ追加時のみtrue。枝切替・編集・全再描画では付けない。
   // wasNearBottom: 呼び出し直前(描画で流れる前)に下端付近にいたか。animateLast時のみ意味を持つ。
   const log = $("chat-log");
   log.innerHTML = "";
-  const mark = document.createElement("div");
-  mark.className = "act-mark";
-  mark.innerHTML = `<svg viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M0 4.2 C 12 3.1, 20 5.0, 33 4.0 S 58 2.9, 70 4.5 S 91 3.5, 100 4.1"/></svg><span>開幕</span><svg viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M0 3.9 C 10 4.9, 22 3.0, 36 4.3 S 60 5.1, 74 3.6 S 92 4.6, 100 4.0"/></svg>`;
-  log.appendChild(mark);
   const ch = getChar(current.charId);
   const sit = getSit(ch, current.sitId);
   const speakerMap = buildSpeakerMap(ch, castChars(sit));
   const per = activePersona();
-  const path = getPath(session);
+  const fullPath = getPath(session);
+  const hidden = Math.max(0, fullPath.length - visibleLimit);
+  const path = hidden ? fullPath.slice(hidden) : fullPath;
+  if(hidden){
+    // 先頭に「もっと前を読む」。押すと古い方へウィンドウを広げる。
+    const more = document.createElement("button");
+    more.className = "ghost";
+    more.style.cssText = "margin:8px 0 4px";
+    more.textContent = `↑ これより前を読む(残り${hidden}件)`;
+    more.addEventListener("click", () => {
+      const topId = path[0] && path[0].id;
+      visibleLimit += LOG_WINDOW;
+      renderLog();
+      // 読んでいた位置を保つ
+      const el = topId && log.querySelector(`.msg[data-node-id="${topId}"]`);
+      if(el) el.scrollIntoView({ block: "start" });
+    });
+    log.appendChild(more);
+  }else{
+    const mark = document.createElement("div");
+    mark.className = "act-mark";
+    mark.innerHTML = `<svg viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M0 4.2 C 12 3.1, 20 5.0, 33 4.0 S 58 2.9, 70 4.5 S 91 3.5, 100 4.1"/></svg><span>開幕</span><svg viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M0 3.9 C 10 4.9, 22 3.0, 36 4.3 S 60 5.1, 74 3.6 S 92 4.6, 100 4.0"/></svg>`;
+    log.appendChild(mark);
+  }
   path.forEach((node, i) => {
     if(node.h){
       // 自動送り用の隠しノード: 本文は表示せず進行マーカーのみ。編集不可。兄弟ナビだけは出す(枝から戻れなくなるため必須)。
@@ -2148,7 +2242,13 @@ async function generate(parentId){
   if(wasNearAtStart) scrollLogToBottom(false);
 
   let firstChunk = true;
-  const onChunk = (delta, full) => {
+  // チャンクは1文字〜数文字刻みで飛んでくる。到着ごとに文字を流し込んで
+  // スクロール位置まで測ると、レイアウトが何百回も走って画面が固まる。
+  // 描画は1フレームにつき1回へまとめる。
+  let pendingText = null, chunkRaf = 0;
+  const paint = () => {
+    chunkRaf = 0;
+    if(pendingText === null) return;
     if(firstChunk){
       // タイピングインジケータ → ストリーミングテキストに切替
       streamText.className = "";
@@ -2156,8 +2256,13 @@ async function generate(parentId){
       firstChunk = false;
     }
     const wasNear = isNearBottom();
-    streamText.textContent = full;
+    streamText.textContent = pendingText;
+    pendingText = null;
     if(wasNear) scrollLogToBottom(false);
+  };
+  const onChunk = (delta, full) => {
+    pendingText = full;
+    if(!chunkRaf) chunkRaf = requestAnimationFrame(paint);
   };
 
   try{
@@ -2168,13 +2273,15 @@ async function generate(parentId){
     // 今もそのセッションを見ているなら画面を更新(ストリーミングで既読なのでアニメ不要)
     if(current.sessionId === ctx.sessionId){
       session = ctx.session;
+      resetLogWindow();   // 新しい応答が入った = 会話の末尾に戻ったので表示ウィンドウを畳む
       renderLog();
     }
     return true;
   }catch(err){
     if(err.name === "AbortError"){
       // 中断時: 途中まで受信したテキストがあれば保存する(読んでたものが消えるのを防ぐ)
-      const partial = streamText.textContent;
+      // まだ描画に反映していない分があればそちらを優先(1フレーム分の取りこぼし防止)
+      const partial = (pendingText !== null) ? pendingText : streamText.textContent;
       if(partial && partial !== "………"){
         const stripped = stripThought(partial);
         if(stripped){
@@ -2194,6 +2301,7 @@ async function generate(parentId){
     showError("エラー: " + err.message);
     return false;
   }finally{
+    if(chunkRaf){ cancelAnimationFrame(chunkRaf); chunkRaf = 0; }
     if(activeAbort === ac) activeAbort = null;
     busy = false;
     $("btn-send").disabled = false;
@@ -2214,6 +2322,7 @@ function send(){
   addNode(session, parentId, "user", text);
   saveSession();
   input.value = ""; input.style.height = "auto";
+  resetLogWindow();
   renderLog(true, wasNear);
   generate(session.leaf);
 }
@@ -2477,6 +2586,7 @@ function renderBookmarkList(){
       session.leaf = deepestLeafFrom(session, node.id);
       saveSession();
       closeModal("modal-menu");
+      revealNode(node.id);       // 表示ウィンドウの外なら広げてから描く
       renderLog();
       // ジャンプ先の要素を探してスクロール(隠しノード=自動送りマーカーは.msgを持たないため、
       // 配列indexではなくnode.idで直接引く)
