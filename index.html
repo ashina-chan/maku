@@ -679,24 +679,129 @@ label{display:block;font-size:12px;color:var(--gray);margin:var(--sp-4) 0 var(--
 
 <script>
 "use strict";
-/* ========== storage(壊れても落ちないようガード) ==========
-   重要: 「キーが無い」と「キーはあるが壊れて読めない」を区別する。
-   後者を fallback で上書きすると過去データが全損するので、上書きを禁止して隔離する。 */
-const CORRUPT = [];   // 読めなかったキー(上書き禁止リスト)
+/* ========== storage: IndexedDB版(壊れても落ちないようガード) ==========
+   ・保存先を localStorage(上限5MB) から IndexedDB(数百MB〜) に移した。
+     再生成のたびにノードが増えて容量超過で保存が止まる問題への対処。
+   ・本体は同期APIのまま使えるようにしてある。起動時に全データをメモリ(MEM)へ
+     読み込み、書き込みは MEM へ即時反映 + 裏でIDBへ非同期保存、という形。
+     MEM が持つのは localStorage 時代と同じ「JSON文字列」。
+   ・IndexedDBが使えない環境(file://・プライベートモード等)では
+     自動的に localStorage へフォールバックする(=従来どおりの挙動)。
+   ・重要: 「キーが無い」と「キーはあるが壊れて読めない」を区別する。
+     後者を fallback で上書きすると過去データが全損するので、上書きを禁止して隔離する。 */
+const CORRUPT = [];              // 読めなかったキー(上書き禁止リスト)
+const MEM = new Map();           // key -> 生のJSON文字列
+const DB_NAME = "maku", DB_STORE = "kv", MIGRATED_KEY = "__maku_storage__";
+let idb = null;                  // IDBDatabase。null なら localStorage で動いている
+let storageBackend = "localStorage";
+
+/* ---- IndexedDB 低レベル ---- */
+function openIDB(){
+  return new Promise((resolve) => {
+    let req;
+    let done = false;
+    const finish = (db) => { if(!done){ done = true; resolve(db); } };
+    try{ req = indexedDB.open(DB_NAME, 1); }
+    catch(e){ return finish(null); }
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if(!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE);
+    };
+    req.onsuccess  = () => finish(req.result);
+    req.onerror    = () => finish(null);
+    req.onblocked  = () => finish(null);
+    // openが無反応のまま固まる事故(古いSafari等)に備えた保険
+    setTimeout(() => finish(null), 4000);
+  });
+}
+function idbReadAll(){
+  return new Promise((resolve, reject) => {
+    let tx;
+    try{ tx = idb.transaction(DB_STORE, "readonly"); }catch(e){ return reject(e); }
+    const st = tx.objectStore(DB_STORE);
+    const kq = st.getAllKeys(), vq = st.getAll();
+    tx.oncomplete = () => {
+      const keys = kq.result || [], vals = vq.result || [];
+      resolve(keys.map((k, i) => [k, vals[i]]));
+    };
+    tx.onerror = tx.onabort = () => reject(tx.error || new Error("read failed"));
+  });
+}
+function idbWriteAll(rows){
+  return new Promise((resolve, reject) => {
+    let tx;
+    try{ tx = idb.transaction(DB_STORE, "readwrite"); }catch(e){ return reject(e); }
+    const st = tx.objectStore(DB_STORE);
+    try{ rows.forEach(([k, v]) => { if(v === null) st.delete(k); else st.put(v, k); }); }
+    catch(e){ return reject(e); }
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = tx.onabort = () => reject(tx.error || new Error("write failed"));
+  });
+}
+
+/* ---- 書き込みキュー(まとめて1トランザクションに畳む) ---- */
+const pending = new Map();       // key -> 文字列 | null(削除)
+let flushTimer = null, flushing = false;
+function scheduleFlush(){
+  if(flushTimer === null && !flushing) flushTimer = setTimeout(flushNow, 0);
+}
+function requeue(batch){
+  // 書けなかった分を戻す。ただし待機中に新しい値が来ていたらそちらを優先する。
+  batch.forEach(([k, v]) => { if(!pending.has(k)) pending.set(k, v); });
+}
+function persistFailed(err){
+  store.lastError = err || null;
+  if(typeof store.onError === "function"){ try{ store.onError(err); }catch(e){} }
+}
+function flushNow(){
+  if(flushTimer !== null){ clearTimeout(flushTimer); flushTimer = null; }
+  if(flushing || !idb || pending.size === 0) return;
+  const batch = Array.from(pending.entries());
+  pending.clear();
+  flushing = true;
+  idbWriteAll(batch).then(() => {
+    flushing = false;
+    if(pending.size) scheduleFlush();
+  }, (err) => {
+    flushing = false;
+    requeue(batch);
+    persistFailed(err);
+  });
+}
+addEventListener("pagehide", flushNow);
+document.addEventListener("visibilitychange", () => {
+  if(document.visibilityState === "hidden") flushNow();
+});
+
+/* ---- 実際の保存先への書き込み ---- */
+function persist(k, value){      // value: 文字列 or null(削除)
+  if(idb){ pending.set(k, value); scheduleFlush(); return true; }
+  try{
+    if(value === null) localStorage.removeItem(k);
+    else localStorage.setItem(k, value);
+    return true;
+  }catch(e){ return false; }
+}
+
 const store = {
-  raw(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+  onError: null,                 // 非同期保存に失敗したときの通知先(本体側で差し替える)
+  lastError: null,
+  backend(){ return storageBackend; },
+  keys(){ return Array.from(MEM.keys()); },
+  raw(k){ return MEM.has(k) ? MEM.get(k) : null; },
   isCorrupt(k){ return CORRUPT.indexOf(k) >= 0; },
+  flush(){ flushNow(); },
   get(k, fallback){
-    let v = null;
-    try{ v = localStorage.getItem(k); }
-    catch(e){ return fallback; }
+    const v = MEM.has(k) ? MEM.get(k) : null;
     if(v === null || v === "") return fallback;   // 本当に無い → fallback でOK
     try{ return JSON.parse(v); }
     catch(e){
       // 壊れている → 生データを退避し、以後このキーへの上書きを止める
       if(CORRUPT.indexOf(k) < 0){
         CORRUPT.push(k);
-        try{ localStorage.setItem("maku_corrupt_" + k + "_" + Date.now(), v); }catch(_){}
+        const bk = "maku_corrupt_" + k + "_" + Date.now();
+        MEM.set(bk, v);
+        persist(bk, v);
       }
       return fallback;
     }
@@ -707,14 +812,101 @@ const store = {
       return false;
     }
     if(force){ const i = CORRUPT.indexOf(k); if(i >= 0) CORRUPT.splice(i, 1); }
-    try{ localStorage.setItem(k, JSON.stringify(v)); return true; }
+    let s;
+    try{ s = JSON.stringify(v); }
     catch(e){
+      if(!quiet) alert("保存に失敗(データを文字列にできなかった)。");
+      return false;
+    }
+    return store.setRaw(k, s, quiet);
+  },
+  // 文字列のまま書き込む(インポートの巻き戻し用)
+  setRaw(k, s, quiet){
+    const prev = MEM.has(k) ? MEM.get(k) : null;
+    MEM.set(k, s);
+    if(!persist(k, s)){
+      // localStorageフォールバック時のみ起こりうる。メモリも巻き戻して食い違わせない。
+      if(prev === null) MEM.delete(k); else MEM.set(k, prev);
       if(!quiet) alert("保存に失敗(容量超過の可能性)。画像を減らすか小さくしてみて。");
       return false;
     }
+    return true;
   },
-  del(k){ try{ localStorage.removeItem(k); }catch(e){} }
+  del(k){ MEM.delete(k); persist(k, null); }
 };
+
+/* ---- 起動: 保存データをメモリへ read + 旧localStorageからの引っ越し ---- */
+function lsMakuKeys(){
+  const keys = [];
+  try{
+    for(let i = 0; i < localStorage.length; i++){
+      const k = localStorage.key(i);
+      if(k && k.indexOf("maku_") === 0) keys.push(k);
+    }
+  }catch(e){}
+  return keys;
+}
+function loadFromLocalStorage(){
+  MEM.clear();
+  lsMakuKeys().forEach(k => {
+    try{ const v = localStorage.getItem(k); if(v !== null) MEM.set(k, v); }catch(e){}
+  });
+}
+function markerRow(count){
+  return [MIGRATED_KEY, JSON.stringify({ v:1, from:"localStorage", at: Date.now(), count })];
+}
+async function migrateFromLocalStorage(){
+  const rows = [];
+  lsMakuKeys().forEach(k => {
+    try{ const v = localStorage.getItem(k); if(v !== null) rows.push([k, v]); }catch(e){}
+  });
+  rows.push(markerRow(rows.length));
+  await idbWriteAll(rows);                       // 失敗時は例外 → 呼び出し側がLSへ退避
+  rows.forEach(([k, v]) => MEM.set(k, v));
+  // 旧データ(localStorage側)は消さずに残す。もしもの時の控え。
+}
+// 引っ越し済みの印だけを書く(IDB側に既にデータがある場合)
+async function markMigrated(){
+  const row = markerRow(0);
+  await idbWriteAll([row]);
+  MEM.set(row[0], row[1]);
+}
+async function bootStore(){
+  // 保存領域が自動削除されないよう申請しておく(できなくても続行)
+  try{
+    if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+  }catch(e){}
+  idb = await openIDB();
+  if(idb){
+    try{
+      const rows = await idbReadAll();
+      rows.forEach(([k, v]) => { if(typeof v === "string") MEM.set(k, v); });
+      // 引っ越し済みの印は "maku_" で始まらない名前にしてある
+      // (インポート時の「maku_を全消し」に巻き込まれて、旧データが復活するのを防ぐため)
+      if(!MEM.has(MIGRATED_KEY)){
+        const hasData = Array.from(MEM.keys()).some(k => k.indexOf("maku_") === 0);
+        // IDB側に既にデータがあるなら、旧localStorageで上書きしてはいけない
+        if(hasData) await markMigrated();
+        else await migrateFromLocalStorage();
+      }
+      idb.onclose = () => { idb = null; storageBackend = "localStorage"; };
+      storageBackend = "IndexedDB";
+      return;
+    }catch(e){
+      idb = null;                                // 読み書きできない → localStorageで動かす
+    }
+  }
+  storageBackend = "localStorage";
+  loadFromLocalStorage();
+}
+
+/* ここから下がアプリ本体。IndexedDBの読み込みを待つために startApp() で
+   包んでいるだけで、中身のインデントは変えていない。 */
+bootStore().then(startApp, (err) => {
+  alert("保存データの読み込みに失敗した: " + ((err && err.message) || err));
+});
+
+function startApp(){
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -1288,15 +1480,24 @@ $("chat-log").addEventListener("animationend", (e) => {
   if(e.animationName === "msg-ink") e.target.classList.remove("ink-rise");
 });
 let unsaved = false;
+function markSaveFailed(detail){
+  if(unsaved) return;
+  unsaved = true;
+  showError("保存に失敗した" + (detail ? "(" + detail + ")" : "") + "。データが消える前にエクスポートしてバックアップを取ってね。");
+  $("btn-send").disabled = true;
+  $("btn-continue").disabled = true;
+}
+// IndexedDBへの書き込みは非同期なので、失敗はここへ通知される
+store.onError = (err) => markSaveFailed((err && (err.name || err.message)) || "保存先エラー");
 function saveSession(){
-  const ok = store.set(sessionKey(current.charId, current.sitId, current.sessionId), session, true);
-  if(!ok && !unsaved){
-    unsaved = true;
-    showError("保存に失敗した(容量超過)。データが消える前にエクスポートしてバックアップを取ってね。");
-    $("btn-send").disabled = true;
-    $("btn-continue").disabled = true;
-  }
+  return persistSession(current, session);
+}
+// 生成中に画面遷移していても正しいセッションへ書けるよう、対象を引数で受ける
+function persistSession(ctx, sess){
+  const ok = store.set(sessionKey(ctx.charId, ctx.sitId, ctx.sessionId), sess, true);
   if(ok) unsaved = false;
+  else markSaveFailed("容量超過");
+  return ok;
 }
 
 function buildSystem(){
@@ -1963,7 +2164,7 @@ async function generate(parentId){
     const reply = await callAPI(ctx.target, ac.signal, onChunk);
     // 固定したセッションへ保存(画面遷移済みでも正しいセッションに入る)
     addNode(ctx.session, ctx.target, "assistant", reply);
-    store.set(sessionKey(ctx.charId, ctx.sitId, ctx.sessionId), ctx.session);
+    persistSession(ctx, ctx.session);
     // 今もそのセッションを見ているなら画面を更新(ストリーミングで既読なのでアニメ不要)
     if(current.sessionId === ctx.sessionId){
       session = ctx.session;
@@ -1978,7 +2179,7 @@ async function generate(parentId){
         const stripped = stripThought(partial);
         if(stripped){
           addNode(ctx.session, ctx.target, "assistant", stripped);
-          store.set(sessionKey(ctx.charId, ctx.sitId, ctx.sessionId), ctx.session);
+          persistSession(ctx, ctx.session);
           if(current.sessionId === ctx.sessionId){
             session = ctx.session;
             renderLog();
@@ -2571,14 +2772,13 @@ $("btn-save-params").addEventListener("click", () => {
 /* ========== export / import ========== */
 function collectAllData(includeApiKey){
   const out = {};
-  for(let i = 0; i < localStorage.length; i++){
-    const k = localStorage.key(i);
-    if(!k || !k.startsWith("maku_")) continue;
+  store.keys().forEach(k => {
+    if(!k || !k.startsWith("maku_")) return;
     let v;
-    try{ v = JSON.parse(localStorage.getItem(k)); }
-    catch(e){ continue; }
+    try{ v = JSON.parse(store.raw(k)); }
+    catch(e){ return; }      // 壊れているキーは持ち出さない(従来どおり)
     out[k] = v;
-  }
+  });
   if(!includeApiKey && out.maku_settings && typeof out.maku_settings === "object"){
     const s = { ...out.maku_settings, apiKey: "" };
     if(Array.isArray(s.providers)){
@@ -2668,24 +2868,15 @@ $("import-file").addEventListener("change", (e) => {
 
     // ---- トランザクション化 ----
     const snapshot = {};
-    const toRemove = [];
-    for(let i = 0; i < localStorage.length; i++){
-      const k = localStorage.key(i);
-      if(k && k.startsWith("maku_")){
-        toRemove.push(k);
-        snapshot[k] = localStorage.getItem(k);
-      }
-    }
+    const toRemove = store.keys().filter(k => k && k.startsWith("maku_"));
+    toRemove.forEach(k => { snapshot[k] = store.raw(k); });
     toRemove.forEach(k => store.del(k));
     const failedKey = Object.keys(safeData).find(k => !store.set(k, safeData[k], true));
     if(failedKey){
       // 巻き戻し: 書きかけを全消去→控えを生文字列のまま戻す
-      for(let i = localStorage.length - 1; i >= 0; i--){
-        const k = localStorage.key(i);
-        if(k && k.startsWith("maku_")) localStorage.removeItem(k);
-      }
+      store.keys().forEach(k => { if(k && k.startsWith("maku_")) store.del(k); });
       Object.keys(snapshot).forEach(k => {
-        try{ localStorage.setItem(k, snapshot[k]); }catch(e){}
+        if(snapshot[k] !== null) store.setRaw(k, snapshot[k], true);
       });
       showImportStatus("容量超過で復元できなかったため、元のデータに戻した。バックアップ内の画像を減らすか、このブラウザの他アプリのデータを整理してみて。");
       return;
@@ -2807,15 +2998,14 @@ $("btn-del-per").addEventListener("click", () => {
 /* ========== データ復旧: 一覧から外れたセッションを拾い直す ========== */
 function scanOrphanSessions(){
   const out = [];
-  let keys = [];
-  try{ for(let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i)); }catch(e){ return out; }
+  const keys = store.keys();
   keys.forEach(k => {
     if(!k || k.indexOf("maku_session_") !== 0) return;
     const parts = k.slice("maku_session_".length).split("_");
     if(parts.length !== 3) return;            // 旧形式(2つ)は移行処理側の担当
     const charId = parts[0], sitId = parts[1], sid = parts[2];
     let sess = null;
-    try{ sess = JSON.parse(localStorage.getItem(k)); }catch(e){ return; }
+    try{ sess = JSON.parse(store.raw(k)); }catch(e){ return; }
     if(!sess || !sess.nodes) return;
     const nodes = Object.values(sess.nodes);
     if(nodes.length === 0) return;            // 空っぽは拾わない
@@ -2838,6 +3028,12 @@ function renderOrphanResult(){
   const found = scanOrphanSessions();
   box.style.display = "block";
   box.innerHTML = "";
+  const where = document.createElement("div");
+  where.className = "hint";
+  where.style.marginBottom = "8px";
+  where.textContent = "保存先: " + store.backend() +
+    (store.backend() === "IndexedDB" ? "(容量に余裕あり)" : "(IndexedDBが使えないため旧方式。5MBで頭打ちになる)");
+  box.appendChild(where);
   if(CORRUPT.length > 0){
     const w = document.createElement("div");
     w.className = "danger-text";
@@ -2900,6 +3096,8 @@ if(CORRUPT.length > 0){
     alert("読み込みに失敗したデータが " + CORRUPT.length + "件ある。\n壊れたデータは上書きせずに退避してある。\n設定 →「データ復旧」を開いて確認して。");
   }, 400);
 }
+
+}   /* ← startApp 終わり */
 </script>
 <script>
 // PWA: Service Worker登録(Stage 1)。失敗しても本体の動作には影響しない
